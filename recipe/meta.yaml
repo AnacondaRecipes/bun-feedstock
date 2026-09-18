@@ -1,6 +1,28 @@
 {% set name = "bun" %}
 {% set version = "1.4.2" %}
 
+# Prebuilt bun used only to bootstrap scripts/build.ts; the source tarball
+# ships no bun binary. Selected with Jinja rather than per-source selectors.
+{% if target_platform == "linux-64" %}
+{% set bun_bootstrap = "bun-linux-x64-baseline" %}
+{% set bun_bootstrap_sha = "c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f" %}
+{% elif target_platform == "linux-aarch64" %}
+{% set bun_bootstrap = "bun-linux-aarch64" %}
+{% set bun_bootstrap_sha = "54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7" %}
+{% elif target_platform == "osx-64" %}
+{% set bun_bootstrap = "bun-darwin-x64" %}
+{% set bun_bootstrap_sha = "80520d7e17526308c9185d261679ac6d27798d3803a0e9f7ff9121ab8affb012" %}
+{% elif target_platform == "osx-arm64" %}
+{% set bun_bootstrap = "bun-darwin-aarch64" %}
+{% set bun_bootstrap_sha = "90987a3a16d7db556d886ac3d551e7b6d3edf0a1cf43acaed622e8676be1d12f" %}
+{% elif target_platform == "win-64" %}
+{% set bun_bootstrap = "bun-windows-x64" %}
+{% set bun_bootstrap_sha = "ce4c17497b2f29712a99d3d53f028de28cd42e3bacb8589599e7f000e49b6405" %}
+{% else %}
+{% set bun_bootstrap = "unsupported-platform" %}
+{% set bun_bootstrap_sha = "0000000000000000000000000000000000000000000000000000000000000000" %}
+{% endif %}
+
 package:
   name: {{ name }}
   version: {{ version }}
@@ -9,19 +31,8 @@ source:
   - url: https://github.com/oven-sh/bun/archive/refs/tags/bun-v{{ version }}.tar.gz
     sha256: e14670b117d69012d828514d657f0a3133d1c25d13d69461184d05b6a8e9a876
 
-  # Prebuilt bun, used only to bootstrap scripts/build.ts. Natural builds only;
-  # bun.native is placed next to the source tree by `folder`.
-  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-linux-x64-baseline.zip  # [linux and x86_64]
-    sha256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
-    folder: bun.native
-  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-linux-aarch64.zip  # [linux and aarch64]
-    sha256: 54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7
-    folder: bun.native
-  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-darwin-x64.zip  # [osx and x86_64]
-    sha256: 80520d7e17526308c9185d261679ac6d27798d3803a0e9f7ff9121ab8affb012
-    folder: bun.native
-  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-darwin-aarch64.zip  # [osx and arm64]
-    sha256: 90987a3a16d7db556d886ac3d551e7b6d3edf0a1cf43acaed622e8676be1d12f
+  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/{{ bun_bootstrap }}.zip
+    sha256: {{ bun_bootstrap_sha }}
     folder: bun.native
 
   # Licences for the statically linked internal forks.
@@ -43,8 +54,6 @@ source:
 
 build:
   number: 0
-  # The build scripts are POSIX-oriented (see recipe/build.sh).
-  skip: true  # [win]
 
 requirements:
   build:
@@ -55,7 +64,7 @@ requirements:
     - lld
     - llvm-tools
     - cmake
-    - sed
+    - sed          # [unix]
     - ninja-base
     - pkg-config
     # Upstream pins nightly-2026-07-20 in rust-toolchain.toml, which is not on
