@@ -9,8 +9,5 @@ c_compiler_version:
   - 21                         # [linux or osx]
 cxx_compiler_version:
   - 21                         # [linux or osx]
-# bun's build refuses an macOS SDK older than 13.0.
-c_stdlib_version:
-  - 2.28                       # [linux]
-  - 13.0                       # [osx]
-  - 2022.14                    # [win]
+# c_stdlib_version is left to the aggregate: forcing 13.0 on osx points
+# CONDA_BUILD_SYSROOT at a macOS 13 SDK the workers do not have.
