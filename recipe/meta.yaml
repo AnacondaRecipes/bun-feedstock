@@ -1,0 +1,116 @@
+{% set name = "bun" %}
+{% set version = "1.4.2" %}
+
+package:
+  name: {{ name }}
+  version: {{ version }}
+
+source:
+  - url: https://github.com/oven-sh/bun/archive/refs/tags/bun-v{{ version }}.tar.gz
+    sha256: e14670b117d69012d828514d657f0a3133d1c25d13d69461184d05b6a8e9a876
+    patches:
+      # The release profile's -Zbuild-std needs the rust-src component, which
+      # the rust-nightly package on defaults does not ship.
+      - 0001-don-t-build-std-in-release.patch
+
+  # Prebuilt bun, used only to bootstrap scripts/build.ts (the source tarball
+  # ships no binary). The selector is repeated on every line of each entry:
+  # a selector on only the url line leaves the sha256/folder lines behind and
+  # they attach to the neighbouring entry.
+  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-linux-x64-baseline.zip  # [linux and x86_64]
+    sha256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f  # [linux and x86_64]
+    folder: bun.native  # [linux and x86_64]
+  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-linux-aarch64.zip  # [linux and aarch64]
+    sha256: 54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7  # [linux and aarch64]
+    folder: bun.native  # [linux and aarch64]
+  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-darwin-x64.zip  # [osx and x86_64]
+    sha256: 80520d7e17526308c9185d261679ac6d27798d3803a0e9f7ff9121ab8affb012  # [osx and x86_64]
+    folder: bun.native  # [osx and x86_64]
+  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-darwin-aarch64.zip  # [osx and arm64]
+    sha256: 90987a3a16d7db556d886ac3d551e7b6d3edf0a1cf43acaed622e8676be1d12f  # [osx and arm64]
+    folder: bun.native  # [osx and arm64]
+  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-windows-x64.zip  # [win]
+    sha256: ce4c17497b2f29712a99d3d53f028de28cd42e3bacb8589599e7f000e49b6405  # [win]
+    folder: bun.native  # [win]
+
+  # Licences for the statically linked internal forks.
+  - url: https://raw.githubusercontent.com/google/boringssl/refs/heads/main/LICENSE
+    sha256: 827c8d8fc207c2392794eef9e00fe246f9f61fdcc132556c275be3dd8c3cd97f
+    fn: boringssl-LICENSE
+  - url: https://raw.githubusercontent.com/microsoft/mimalloc/refs/heads/main/LICENSE
+    sha256: 82ade5d7d9b029044b5fbbc326207fc47c2d44ee4dd71e8a559c36d728217de9
+    fn: mimalloc-LICENSE
+  - url: https://raw.githubusercontent.com/TinyCC/tinycc/refs/heads/mob/COPYING
+    sha256: 512d2d21b6b3384ba64781abb0208a1b87740bc31e2df48e2b206ddb7e4d5779
+    fn: tinycc-LICENSE
+  - url: https://raw.githubusercontent.com/simdutf/simdutf/refs/heads/master/LICENSE-MIT
+    sha256: fc8dbc04e03ad4efc08a647ffe7f995b811a95bc04c0e85a56d5277c6593fa5f
+    fn: simdutf-LICENSE-MIT
+  - url: https://raw.githubusercontent.com/simdutf/simdutf/refs/heads/master/LICENSE-APACHE
+    sha256: 3d34610fc6b5e1b0bfe4e2f36171c2d62c28ef05cb8d704f5a0073be41a43b3d
+    fn: simdutf-LICENSE-APACHE
+
+build:
+  number: 0
+
+requirements:
+  build:
+    - {{ compiler('c') }}
+    - {{ compiler('cxx') }}
+    - {{ stdlib('c') }}
+    - clang
+    - lld
+    - llvm-tools
+    - cmake
+    - git
+    - nasm
+    - perl
+    - sed        # [unix]
+    - ninja-base
+    - pkg-config
+    # Upstream pins nightly-2026-07-20 in rust-toolchain.toml, which is not on
+    # defaults; this is the nearest available nightly.
+    - rust-nightly 1.100.0_2026_08_18
+  # bun links libatomic on linux; on defaults it is shipped by libgcc
+  # (there is no libatomic package). libgcc only carries it from 15 onwards.
+  host:
+    - libgcc >=15  # [linux]
+  run:
+    - libgcc >=15  # [linux]
+
+test:
+  files:
+    - share/bash-completion/completions/bun
+    - share/zsh/site-functions/_bun
+    - share/fish/vendor_completions.d/bun.fish
+  commands:
+    - bun --version
+    - bun --help
+    - bunx --version
+
+about:
+  home: https://bun.sh
+  dev_url: https://github.com/oven-sh/bun
+  doc_url: https://bun.sh/docs
+  license: MIT
+  license_family: MIT
+  license_file:
+    - LICENSE.md
+    - tinycc-LICENSE
+    - boringssl-LICENSE
+    - mimalloc-LICENSE
+    - picohttp-LICENSE-MIT
+    - simdutf-LICENSE-MIT
+    - simdutf-LICENSE-APACHE
+    - packages/bun-usockets/LICENSE
+    - packages/bun-uws/LICENSE
+  summary: Bun is a fast all-in-one JavaScript runtime
+  description: |
+    Bun is an all-in-one JavaScript runtime and toolkit distributed as a single
+    executable: runtime, bundler, test runner and package manager.
+
+extra:
+  recipe-maintainers:
+    - xhochy
+    - pavelzw
+    - I-Al-Istannen
