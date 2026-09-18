@@ -24,7 +24,19 @@ export BUN_TOOLCHAIN_CARGO="${BUILD_PREFIX}/bin/cargo"
 # Xcode SDK, and fetches its own pinned SDK.
 export CI=true
 
-bun scripts/build.ts --profile=release
+bun_args=(--profile=release)
+if [[ "${target_platform}" == linux-* ]]; then
+  # conda's LLVM toolchain does not ship the static libatomic bun links by
+  # default, which fails the final link with `unable to find library -l:libatomic.a`.
+  bun_args+=(--static-libatomic=off)
+fi
+if [[ "${target_platform}" == osx-* ]]; then
+  # The CI build flags use the minimum supported macOS deployment target (13.0)
+  # instead of probing the worker's older Xcode SDK.
+  bun_args+=(--ci)
+fi
+
+bun scripts/build.ts "${bun_args[@]}"
 
 mkdir -p "${PREFIX}/bin"
 cp build/release/bun "${PREFIX}/bin/bun"
