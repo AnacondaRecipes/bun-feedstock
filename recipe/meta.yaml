@@ -8,6 +8,10 @@ package:
 source:
   - url: https://github.com/oven-sh/bun/archive/refs/tags/bun-v{{ version }}.tar.gz
     sha256: e14670b117d69012d828514d657f0a3133d1c25d13d69461184d05b6a8e9a876
+    patches:
+      # The release profile's -Zbuild-std needs the rust-src component, which
+      # the rust-nightly package on defaults does not ship.
+      - 0001-don-t-build-std-in-release.patch
 
   # Prebuilt bun, used only to bootstrap scripts/build.ts (the source tarball
   # ships no binary). The selector is repeated on every line of each entry:

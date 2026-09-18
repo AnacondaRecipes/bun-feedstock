@@ -23,18 +23,6 @@ set "PATH=%BUILD_PREFIX%\Library\bin;%PATH%"
 REM CI=true makes the build take its CI path rather than the local-dev path.
 set CI=true
 
-REM conda's rust-nightly does not ship the rust-src component, which the release
-REM profile requires for -Zbuild-std (scripts/build/rust.ts).
-if not exist "%BUILD_PREFIX%\lib\rustlib\src\rust\library\Cargo.lock" (
-  curl -sSL -o rust-src-nightly.tar.gz "https://static.rust-lang.org/dist/2026-08-18/rust-src-nightly.tar.gz"
-  if errorlevel 1 exit 1
-  tar -xzf rust-src-nightly.tar.gz
-  if errorlevel 1 exit 1
-  if not exist "%BUILD_PREFIX%\lib\rustlib\src" mkdir "%BUILD_PREFIX%\lib\rustlib\src"
-  xcopy /E /I /Y "rust-src-nightly\rust-src\lib\rustlib\src\rust" "%BUILD_PREFIX%\lib\rustlib\src\rust"
-  if errorlevel 1 exit 1
-)
-
 bun scripts/build.ts --profile=release
 if errorlevel 1 exit 1
 

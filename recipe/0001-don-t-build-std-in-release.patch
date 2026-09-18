@@ -1,0 +1,21 @@
+--- a/scripts/build/rust.ts
++++ b/scripts/build/rust.ts
+@@ -333,14 +333,12 @@
+     profile.name,
+     "--locked",
+   ];
+-  if (tier3 || cfg.release || cfg.asan) {
++  // conda: the release profile does not use -Zbuild-std because the
++  // rust-nightly package on defaults does not ship the rust-src component
++  // that it requires; the prebuilt std is linked instead.
++  if (tier3 || cfg.asan) {
+     // Rebuild std from source (cargoBuildStdArg) because:
+     // tier3:   no prebuilt `rust-std` exists.
+-    // release: prebuilt std is native code built for generic x86-64 with no
+-    //          `.llvm_addrsig`. Rebuilding with our RUSTFLAGS gets it
+-    //          `-Ctarget-cpu=` (AVX2/BMI in core::str / hashbrown), and under
+-    //          `cfg.lto` it becomes bitcode that joins the cross-language LTO
+-    //          unit + safe ICF instead of being an opaque blob in the link.
+     // asan:    prebuilt std is uninstrumented; rebuilding applies
+     //          `-Zsanitizer=address` so OOB/UAF inside Vec/String/HashMap are
+     //          visible instead of stopping at the std boundary.

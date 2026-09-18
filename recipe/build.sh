@@ -24,17 +24,6 @@ export BUN_TOOLCHAIN_CARGO="${BUILD_PREFIX}/bin/cargo"
 # Xcode SDK, and fetches its own pinned SDK.
 export CI=true
 
-# conda's rust-nightly does not ship the rust-src component, which the release
-# profile requires for -Zbuild-std (scripts/build/rust.ts).
-rust_src_root="${BUILD_PREFIX}/lib/rustlib/src"
-if [[ ! -f "${rust_src_root}/rust/library/Cargo.lock" ]]; then
-  curl -sSL -o rust-src-nightly.tar.gz \
-    "https://static.rust-lang.org/dist/2026-08-18/rust-src-nightly.tar.gz"
-  tar -xzf rust-src-nightly.tar.gz
-  mkdir -p "${rust_src_root}"
-  cp -a rust-src-nightly/rust-src/lib/rustlib/src/rust "${rust_src_root}/"
-fi
-
 bun scripts/build.ts --profile=release
 
 mkdir -p "${PREFIX}/bin"
