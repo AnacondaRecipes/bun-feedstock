@@ -14,9 +14,11 @@ REM revision; supply the release commit.
 set GIT_SHA=744846f844374847c902b5e7fd59b4342a51ef99
 
 REM Use the conda LLVM/Rust toolchains instead of letting the build fetch its own.
-set BUN_TOOLCHAIN_LLVM=%BUILD_PREFIX%
+REM On Windows conda installs these under Library\bin, not bin.
+set BUN_TOOLCHAIN_LLVM=%BUILD_PREFIX%\Library
 set BUN_TOOLCHAIN_RUST=%BUILD_PREFIX%
-set BUN_TOOLCHAIN_CARGO=%BUILD_PREFIX%\bin\cargo.exe
+set BUN_TOOLCHAIN_CARGO=%BUILD_PREFIX%\Library\bin\cargo.exe
+set "PATH=%BUILD_PREFIX%\Library\bin;%PATH%"
 
 REM Invalid environment variable: CI="azure", please use CI=<ON|OFF>
 set CI=

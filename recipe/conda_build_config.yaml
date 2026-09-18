@@ -1,13 +1,16 @@
 # bun requires clang; the aggregate pins gcc 14.3 on linux and clang 20 on osx.
-# Windows keeps the aggregate vs2022 toolchain.
 c_compiler:
   - clang                      # [linux or osx]
+  - vs2022                     # [win]
 cxx_compiler:
   - clangxx                    # [linux or osx]
+  - vs2022                     # [win]
 c_compiler_version:
   - 21                         # [linux or osx]
 cxx_compiler_version:
   - 21                         # [linux or osx]
-# NOTE: c_stdlib_version is intentionally not set here — it needs different
-# values per platform, which would duplicate the key and the linter rejects
-# duplicate YAML keys. The aggregate values are used instead.
+# bun's build refuses an macOS SDK older than 13.0.
+c_stdlib_version:
+  - 2.28                       # [linux]
+  - 13.0                       # [osx]
+  - 2022.14                    # [win]
