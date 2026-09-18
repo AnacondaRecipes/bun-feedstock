@@ -58,6 +58,7 @@ requirements:
     - lld
     - llvm-tools
     - cmake
+    - git
     - nasm
     - perl
     - sed        # [unix]
