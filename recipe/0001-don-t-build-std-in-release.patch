@@ -19,3 +19,29 @@
      // asan:    prebuilt std is uninstrumented; rebuilding applies
      //          `-Zsanitizer=address` so OOB/UAF inside Vec/String/HashMap are
      //          visible instead of stopping at the std boundary.
+@@ -717,13 +715,9 @@
+     // profile — a debug bun should still write release shims (matches Zig's
+     // unconditional `.ReleaseFast`).
+     //
+-    // `-Zbuild-std=core,compiler_builtins` rebuilds the sysroot for the
+-    // freestanding `#![no_std]` crate so LTO can inline across `core`;
+-    // `panic_immediate_abort` makes every `panic!`/`unreachable!`/`assert!`
+-    // (incl. those buried in `core::fmt`, slice indexing, `Option::unwrap`)
+-    // compile to a bare `ud2`/`brk` with no `core::fmt::Arguments` payload —
+-    // that machinery is otherwise the bulk of `.text`. Nightly + `rust-src`
+-    // are guaranteed by `rust-toolchain.toml`.
++    // conda: the shim links the prebuilt core/compiler_builtins rather than
++    // rebuilding them with -Zbuild-std, because the rust-nightly package on
++    // defaults does not ship the rust-src component that requires.
+     const shimArgs: string[] = [
+       "-p",
+       "bun_shim_impl",
+@@ -738,8 +732,6 @@
+       "--profile",
+       "shim",
+       "--locked",
+-      "-Zbuild-std=core,compiler_builtins",
+-      "-Zbuild-std-features=compiler-builtins-mem",
+     ];
+     const shimSrc = resolve(targetDir, triple, "shim", "bun_shim_impl.exe");
+     // Same env minus the main build's CARGO_ENCODED_RUSTFLAGS — the shim has

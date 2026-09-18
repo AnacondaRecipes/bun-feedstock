@@ -71,6 +71,12 @@ requirements:
     # Upstream pins nightly-2026-07-20 in rust-toolchain.toml, which is not on
     # defaults; this is the nearest available nightly.
     - rust-nightly 1.100.0_2026_08_18
+  # bun links libatomic on linux; on defaults it is shipped by libgcc
+  # (there is no libatomic package).
+  host:
+    - libgcc  # [linux]
+  run:
+    - libgcc  # [linux]
 
 test:
   files:

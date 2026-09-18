@@ -33,7 +33,7 @@ fi
 if [[ "${target_platform}" == osx-* ]]; then
   # The CI build flags use the minimum supported macOS deployment target (13.0)
   # instead of probing the worker's older Xcode SDK.
-  bun_args+=(--ci)
+  bun_args+=(--ci=true)
 fi
 
 bun scripts/build.ts "${bun_args[@]}"
