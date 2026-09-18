@@ -72,11 +72,11 @@ requirements:
     # defaults; this is the nearest available nightly.
     - rust-nightly 1.100.0_2026_08_18
   # bun links libatomic on linux; on defaults it is shipped by libgcc
-  # (there is no libatomic package).
+  # (there is no libatomic package). libgcc only carries it from 15 onwards.
   host:
-    - libgcc  # [linux]
+    - libgcc >=15  # [linux]
   run:
-    - libgcc  # [linux]
+    - libgcc >=15  # [linux]
 
 test:
   files:
