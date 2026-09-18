@@ -58,7 +58,8 @@ requirements:
     - lld
     - llvm-tools
     - cmake
-    - perl       # [unix]
+    - nasm
+    - perl
     - sed        # [unix]
     - ninja-base
     - pkg-config

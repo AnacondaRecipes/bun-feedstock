@@ -20,8 +20,8 @@ set BUN_TOOLCHAIN_RUST=%BUILD_PREFIX%
 set BUN_TOOLCHAIN_CARGO=%BUILD_PREFIX%\Library\bin\cargo.exe
 set "PATH=%BUILD_PREFIX%\Library\bin;%PATH%"
 
-REM Invalid environment variable: CI="azure", please use CI=<ON|OFF>
-set CI=
+REM CI=true makes the build take its CI path rather than the local-dev path.
+set CI=true
 
 bun scripts/build.ts --profile=release
 if errorlevel 1 exit 1
