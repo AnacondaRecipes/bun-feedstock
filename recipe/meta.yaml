@@ -99,10 +99,12 @@ requirements:
     - libgcc >=15  # [linux]
 
 test:
+  # bun emits these on unix only; on Windows `bun completions` targets
+  # PowerShell, which upstream has not implemented (oven-sh/bun#8939).
   files:
-    - share/bash-completion/completions/bun
-    - share/zsh/site-functions/_bun
-    - share/fish/vendor_completions.d/bun.fish
+    - share/bash-completion/completions/bun  # [unix]
+    - share/zsh/site-functions/_bun  # [unix]
+    - share/fish/vendor_completions.d/bun.fish  # [unix]
   commands:
     - bun --version
     - bun --help
