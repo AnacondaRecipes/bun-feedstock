@@ -45,3 +45,18 @@
      ];
      const shimSrc = resolve(targetDir, triple, "shim", "bun_shim_impl.exe");
      // Same env minus the main build's CARGO_ENCODED_RUSTFLAGS — the shim has
+@@ -761,12 +753,9 @@
+     // rejects it. The section is ~3 KiB; not worth a custom target JSON.)
+     const { CARGO_ENCODED_RUSTFLAGS: _, ...shimEnv } = env;
+     shimEnv.CARGO_ENCODED_RUSTFLAGS = [
+-      // `panic = "immediate-abort"` is the new (nightly ≥ 2025-12) spelling of
+-      // the old `-Zbuild-std-features=panic_immediate_abort`: every panic call
+-      // (incl. core::fmt-carrying assert/unreachable/unwrap) compiles to a
+-      // bare trap with no `Arguments` payload.
++      // conda: -Cpanic=immediate-abort is omitted; it needs a `core` rebuilt
++      // with -Zbuild-std (rust-src), which defaults does not ship.
+       "-Zunstable-options",
+-      "-Cpanic=immediate-abort",
+       "-Clink-arg=/ENTRY:shim_main",
+       "-Clink-arg=/SUBSYSTEM:CONSOLE",
+       "-Clink-arg=/NODEFAULTLIB",

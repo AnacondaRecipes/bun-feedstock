@@ -19,6 +19,12 @@ export BUN_TOOLCHAIN_LLVM="${BUILD_PREFIX}"
 export BUN_TOOLCHAIN_RUST="${BUILD_PREFIX}"
 export BUN_TOOLCHAIN_CARGO="${BUILD_PREFIX}/bin/cargo"
 
+# bun drives clang itself and ignores the conda-injected CPPFLAGS/LDFLAGS, so
+# expose the host prefix the way those flags would: CPATH is an implicit include
+# path for clang, LIBRARY_PATH an implicit -L for its driver.
+export CPATH="${PREFIX}/include${CPATH:+:${CPATH}}"
+export LIBRARY_PATH="${PREFIX}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
+
 # CI=true makes the build take its CI path: on macOS it uses the minimum
 # supported deployment target (13.0) instead of probing the worker's older
 # Xcode SDK, and fetches its own pinned SDK.

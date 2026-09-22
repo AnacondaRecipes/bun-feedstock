@@ -71,10 +71,13 @@ requirements:
     # Upstream pins nightly-2026-07-20 in rust-toolchain.toml, which is not on
     # defaults; this is the nearest available nightly.
     - rust-nightly 1.100.0_2026_08_18
-  # bun links libatomic on linux; on defaults it is shipped by libgcc
-  # (there is no libatomic package). libgcc only carries it from 15 onwards.
+  # bun links libatomic on linux; on defaults it is shipped by libgcc (there is
+  # no libatomic package), and only from 15 onwards.
+  # The osx build needs ICU headers for the prebuilt WebKit headers; the
+  # linux/windows prebuilts bundle their own ICU.
   host:
-    - libgcc >=15  # [linux]
+    - libgcc 15.2.0  # [linux]
+    - icu 78.3       # [osx]
   run:
     - libgcc >=15  # [linux]
 
