@@ -1,6 +1,6 @@
 --- a/src/install/windows-shim/main.rs
 +++ b/src/install/windows-shim/main.rs
-@@ -125,6 +125,33 @@
+@@ -125,6 +125,37 @@
      );
  }
  
@@ -12,23 +12,27 @@
 +#[cfg(windows)]
 +#[unsafe(no_mangle)]
 +pub(crate) unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, count: usize) -> *mut u8 {
-+    let mut i = 0usize;
-+    while i < count {
-+        core::ptr::write_volatile(dest.add(i), core::ptr::read_volatile(src.add(i)));
-+        i += 1;
++    unsafe {
++        let mut i = 0usize;
++        while i < count {
++            core::ptr::write_volatile(dest.add(i), core::ptr::read_volatile(src.add(i)));
++            i += 1;
++        }
++        dest
 +    }
-+    dest
 +}
 +
 +#[cfg(windows)]
 +#[unsafe(no_mangle)]
 +pub(crate) unsafe extern "C" fn memset(dest: *mut u8, value: i32, count: usize) -> *mut u8 {
-+    let mut i = 0usize;
-+    while i < count {
-+        core::ptr::write_volatile(dest.add(i), value as u8);
-+        i += 1;
++    unsafe {
++        let mut i = 0usize;
++        while i < count {
++            core::ptr::write_volatile(dest.add(i), value as u8);
++            i += 1;
++        }
++        dest
 +    }
-+    dest
 +}
 +
  /// PE entry point (named via `-C link-arg=/ENTRY:shim_main` in the build
