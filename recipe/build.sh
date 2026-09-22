@@ -30,16 +30,25 @@ export LIBRARY_PATH="${PREFIX}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
 # Xcode SDK, and fetches its own pinned SDK.
 export CI=true
 
-# conda: drive every macOS link with ld64.lld. conda's clang passes
-# `-lto_library <prefix>/lib/libLTO.21.1.dylib`, and Apple's ld rejects that
-# basename ("library filename must be 'libLTO.dylib'"); ld64.lld consumes the
-# bitcode itself and ignores the flag. bun resolves its compilers from
-# BUN_TOOLCHAIN_LLVM and the Rust host build scripts link with the same driver,
-# so a driver shim covers every link site. The flag is added only for link
-# invocations: compile-only steps would otherwise warn about an unused argument
-# and the build uses -Werror.
+# conda: two macOS link problems, both handled by the driver shim below.
+#   * conda's clang passes `-lto_library <prefix>/lib/libLTO.21.1.dylib`, and
+#     Apple's ld rejects that basename ("library filename must be 'libLTO.dylib'");
+#     ld64.lld consumes the bitcode itself and ignores the flag.
+#   * bun's prebuilt WebKit references ICU 78 entry points (unumrf_*,
+#     ucal_getTimeZoneOffsetFromLocal, ubrk_clone, ...) that the worker's default
+#     Xcode SDK stub does not list, while the SDK bun pins (MACOS_SDK_VERSION,
+#     shipped on the worker as /opt/MacOSX<ver>.sdk) does. Rewrite the link's
+#     -isysroot to that SDK so those symbols resolve.
+# bun resolves its compilers from BUN_TOOLCHAIN_LLVM and the Rust host build
+# scripts link with the same driver, so a shim covers every link site. The extra
+# flags go on link invocations only: compile-only steps would warn about unused
+# arguments and the build uses -Werror.
 if [[ "${target_platform}" == osx-* ]]; then
   bun_toolchain="${SRC_DIR}/../bun-toolchain"
+  bun_sdk=""
+  for d in /opt/MacOSX*.sdk; do
+    if [[ -d "${d}" ]]; then bun_sdk="${d}"; fi
+  done
   mkdir -p "${bun_toolchain}/bin"
   for drv in clang clang++; do
     cat > "${bun_toolchain}/bin/${drv}" <<EOF
@@ -49,7 +58,18 @@ for a in "\$@"; do
   case "\$a" in -c|-S|-E|-M|-MM|-###) link=0 ;; esac
 done
 if [ "\$link" = "1" ]; then
-  exec "${BUILD_PREFIX}/bin/${drv}" -fuse-ld=lld "\$@"
+  args=()
+  skip=0
+  for a in "\$@"; do
+    if [ "\$skip" = "1" ]; then skip=0; continue; fi
+    if [ "\$a" = "-isysroot" ] && [ -n "${bun_sdk}" ]; then
+      args+=("-isysroot" "${bun_sdk}")
+      skip=1
+      continue
+    fi
+    args+=("\$a")
+  done
+  exec "${BUILD_PREFIX}/bin/${drv}" -fuse-ld=lld "\${args[@]}"
 else
   exec "${BUILD_PREFIX}/bin/${drv}" "\$@"
 fi
