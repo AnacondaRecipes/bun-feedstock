@@ -40,6 +40,22 @@ export CI=true
 # and the build uses -Werror.
 if [[ "${target_platform}" == osx-* ]]; then
   bun_toolchain="${SRC_DIR}/../bun-toolchain"
+  # ICU entry points bun's prebuilt WebKit references that the worker's SDK
+  # libicucore stub does not list, even though the OS ICU provides them (the
+  # NumberRangeFormatter C API plus ubrk_clone/uplrules/udtitvfmt/ucal belong to
+  # APIs stable since ICU 68, and the workers run macOS 12+). ld64.lld refuses
+  # to link against an unresolved symbol, so mark exactly these as
+  # allowed-undefined: dyld binds them from the system libicucore at load time.
+  # Extend this list if a link error names a further _u* symbol.
+  bun_icu_undef=""
+  for sym in \
+    unumrf_closeResult unumrf_openResult unumrf_resultAsValue \
+    unumrf_formatDoubleRange unumrf_formatDecimalRange unumrf_close \
+    unumrf_openForSkeletonWithCollapseAndIdentityFallback \
+    ubrk_clone uplrules_selectForRange udtitvfmt_formatCalendarToResult \
+    ucal_getTimeZoneOffsetFromLocal; do
+    bun_icu_undef="${bun_icu_undef} -Wl,-U,_${sym}"
+  done
   mkdir -p "${bun_toolchain}/bin"
   for drv in clang clang++; do
     cat > "${bun_toolchain}/bin/${drv}" <<EOF
@@ -49,7 +65,7 @@ for a in "\$@"; do
   case "\$a" in -c|-S|-E|-M|-MM|-###) link=0 ;; esac
 done
 if [ "\$link" = "1" ]; then
-  exec "${BUILD_PREFIX}/bin/${drv}" -fuse-ld=lld "\$@"
+  exec "${BUILD_PREFIX}/bin/${drv}" -fuse-ld=lld${bun_icu_undef} "\$@"
 else
   exec "${BUILD_PREFIX}/bin/${drv}" "\$@"
 fi
