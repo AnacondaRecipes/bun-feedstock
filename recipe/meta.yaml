@@ -58,6 +58,14 @@ source:
 
 build:
   number: 0
+  # conda-build's rpath step (patchelf --force-rpath --set-rpath $ORIGIN/../lib)
+  # appends a PT_LOAD to this 75 MB binary whose page range overlaps the next
+  # segment's first page, giving an ELF the kernel refuses to map -- the linux
+  # test then dies with SIGSEGV at exec, before any code runs
+  # ("Uhuuh, elf segment at 0x20f000 requested but the memory is mapped
+  # already"). bun's link emits no RPATH and every DT_NEEDED is a system
+  # library (libc/ld-linux/libpthread/libdl/libm), so it is not needed.
+  binary_relocation: false
 
 requirements:
   build:
