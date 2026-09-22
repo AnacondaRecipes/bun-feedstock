@@ -58,9 +58,11 @@ requirements:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
     - {{ stdlib('c') }}
-    - clang
-    - lld
-    - llvm-tools
+    # bun requires LLVM 21 (upstream CONTRIBUTING); pin the three so the
+    # compiler, linker and binutils cannot resolve to different majors.
+    - clang 21.1.8        # [unix]
+    - lld 21.1.8          # [unix]
+    - llvm-tools 21.1.8   # [unix]
     - cmake
     - git
     - nasm
