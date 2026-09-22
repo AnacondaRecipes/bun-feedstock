@@ -95,13 +95,11 @@ requirements:
     - rust-nightly 1.100.0_2026_08_18
   # bun links libatomic on linux; on defaults it is shipped by libgcc (there is
   # no libatomic package), and only from 15 onwards.
-  # No ICU here on purpose: bun compiles with -DU_DISABLE_RENAMING=1 and links
-  # Apple's libicucore (bun.ts 'icucore: system ICU framework'), and the macOS
-  # SDK already ships the matching ICU headers. Supplying conda's ICU 78
-  # headers instead makes the objects reference ICU 78 symbols that an older
-  # worker's system icucore does not export (undefined unumrf_*/ucal_* at link).
+  # The osx build needs ICU headers for the prebuilt WebKit headers; the
+  # linux/windows prebuilts bundle their own ICU.
   host:
     - libgcc 15.2.0  # [linux]
+    - icu 78.3       # [osx]
   run:
     - libgcc >=15  # [linux]
 

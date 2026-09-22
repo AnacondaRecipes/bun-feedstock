@@ -30,29 +30,16 @@ export LIBRARY_PATH="${PREFIX}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
 # Xcode SDK, and fetches its own pinned SDK.
 export CI=true
 
-# conda: two macOS link problems, both handled by the driver shim below.
-#   * conda's clang passes `-lto_library <prefix>/lib/libLTO.21.1.dylib`, and
-#     Apple's ld rejects that basename ("library filename must be 'libLTO.dylib'");
-#     ld64.lld consumes the bitcode itself and ignores the flag.
-#   * bun's prebuilt WebKit needs the SDK bun pins (MACOS_SDK_VERSION, shipped
-#     on the worker as /opt/MacOSX<ver>.sdk) for BOTH sides of the build: its
-#     headers need the ICU headers the worker's default SDK lacks
-#     ('unicode/utypes.h' file not found when building the PCH), and the link
-#     needs its libicucore stub, which lists the ICU 78 symbols the prebuilt
-#     references (unumrf_*, ucal_getTimeZoneOffsetFromLocal, ubrk_clone, ...)
-#     that the default SDK stub does not.
-#   So the shim below rewrites -isysroot to that SDK for every invocation, and
-#   adds -fuse-ld=lld for link ones only.
-# bun resolves its compilers from BUN_TOOLCHAIN_LLVM and the Rust host build
-# scripts link with the same driver, so a shim covers every compile/link site.
-# Flags go on links only where they must: compile-only steps would warn about
-# unused arguments and the build uses -Werror.
+# conda: drive every macOS link with ld64.lld. conda's clang passes
+# `-lto_library <prefix>/lib/libLTO.21.1.dylib`, and Apple's ld rejects that
+# basename ("library filename must be 'libLTO.dylib'"); ld64.lld consumes the
+# bitcode itself and ignores the flag. bun resolves its compilers from
+# BUN_TOOLCHAIN_LLVM and the Rust host build scripts link with the same driver,
+# so a driver shim covers every link site. The flag is added only for link
+# invocations: compile-only steps would otherwise warn about an unused argument
+# and the build uses -Werror.
 if [[ "${target_platform}" == osx-* ]]; then
   bun_toolchain="${SRC_DIR}/../bun-toolchain"
-  bun_sdk=""
-  for d in /opt/MacOSX*.sdk; do
-    if [[ -d "${d}" ]]; then bun_sdk="${d}"; fi
-  done
   mkdir -p "${bun_toolchain}/bin"
   for drv in clang clang++; do
     cat > "${bun_toolchain}/bin/${drv}" <<EOF
@@ -61,21 +48,10 @@ link=1
 for a in "\$@"; do
   case "\$a" in -c|-S|-E|-M|-MM|-###) link=0 ;; esac
 done
-args=()
-skip=0
-for a in "\$@"; do
-  if [ "\$skip" = "1" ]; then skip=0; continue; fi
-  if [ "\$a" = "-isysroot" ] && [ -n "${bun_sdk}" ]; then
-    args+=("-isysroot" "${bun_sdk}")
-    skip=1
-    continue
-  fi
-  args+=("\$a")
-done
 if [ "\$link" = "1" ]; then
-  exec "${BUILD_PREFIX}/bin/${drv}" -fuse-ld=lld "\${args[@]}"
+  exec "${BUILD_PREFIX}/bin/${drv}" -fuse-ld=lld "\$@"
 else
-  exec "${BUILD_PREFIX}/bin/${drv}" "\${args[@]}"
+  exec "${BUILD_PREFIX}/bin/${drv}" "\$@"
 fi
 EOF
     chmod +x "${bun_toolchain}/bin/${drv}"
