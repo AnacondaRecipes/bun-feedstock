@@ -60,9 +60,10 @@ requirements:
     - {{ stdlib('c') }}
     # bun requires LLVM 21 (upstream CONTRIBUTING); pin the three so the
     # compiler, linker and binutils cannot resolve to different majors.
-    - clang 21.1.8        # [unix]
-    - lld 21.1.8          # [unix]
-    - llvm-tools 21.1.8   # [unix]
+    # No selector: windows needs clang-cl/lld-link/llvm-rc here too.
+    - clang 21.1.8
+    - lld 21.1.8
+    - llvm-tools 21.1.8
     - cmake
     - git
     - nasm
