@@ -12,6 +12,12 @@ source:
       # The release profile's -Zbuild-std needs the rust-src component, which
       # the rust-nightly package on defaults does not ship.
       - 0001-don-t-build-std-in-release.patch
+      # The windows .bin/ shim links with /NODEFAULTLIB and got memcpy from
+      # -Zbuild-std-features=compiler-builtins-mem; supply it instead.
+      - 0002-windows-shim-memcpy.patch
+      # This header uses Bun::createClassStructure without including the header
+      # that declares it, which only shows up in some unified-source groupings.
+      - 0003-include-bunclientdata.patch
 
   # Prebuilt bun, used only to bootstrap scripts/build.ts (the source tarball
   # ships no binary). The selector is repeated on every line of each entry:
@@ -120,3 +126,7 @@ extra:
     - xhochy
     - pavelzw
     - I-Al-Istannen
+  # libgcc is the only provider of libatomic on defaults, and it cannot be
+  # pulled in through the compiler/stdlib packages.
+  skip-lints:
+    - should_use_compilers

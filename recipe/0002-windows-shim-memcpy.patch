@@ -1,0 +1,36 @@
+--- a/src/install/windows-shim/main.rs
++++ b/src/install/windows-shim/main.rs
+@@ -125,6 +125,33 @@
+     );
+ }
+ 
++/// `memcpy`/`memset` normally come from `compiler_builtins`' `mem` feature,
++/// which is only enabled by `-Zbuild-std-features=compiler-builtins-mem`.
++/// This build has no `-Zbuild-std` (defaults does not ship rust-src) and the
++/// shim links with `/NODEFAULTLIB`, so provide them here. Volatile accesses
++/// keep LLVM from re-recognising the copy idiom and recursing into memcpy.
++#[cfg(windows)]
++#[unsafe(no_mangle)]
++pub(crate) unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, count: usize) -> *mut u8 {
++    let mut i = 0usize;
++    while i < count {
++        core::ptr::write_volatile(dest.add(i), core::ptr::read_volatile(src.add(i)));
++        i += 1;
++    }
++    dest
++}
++
++#[cfg(windows)]
++#[unsafe(no_mangle)]
++pub(crate) unsafe extern "C" fn memset(dest: *mut u8, value: i32, count: usize) -> *mut u8 {
++    let mut i = 0usize;
++    while i < count {
++        core::ptr::write_volatile(dest.add(i), value as u8);
++        i += 1;
++    }
++    dest
++}
++
+ /// PE entry point (named via `-C link-arg=/ENTRY:shim_main` in the build
+ /// script — bypasses `mainCRTStartup` and the CRT entirely). The launcher
+ /// reads its arguments / image path straight from the TEB→PEB process
