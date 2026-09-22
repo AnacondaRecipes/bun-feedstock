@@ -16,8 +16,13 @@ source:
       # -Zbuild-std-features=compiler-builtins-mem; supply it instead.
       - 0002-windows-shim-memcpy.patch
       # This header uses Bun::createClassStructure without including the header
-      # that declares it, which only shows up in some unified-source groupings.
-      - 0003-include-bunclientdata.patch
+      # that declares it; only surfaces when the precompiled header is absent.
+      # We build with --ci (macOS needs the 13.0 deployment-target floor), and
+      # CI mode otherwise drops that PCH, so keep it enabled instead.
+      - 0003-keep-pch-in-ci-mode.patch
+      # macOS links go through ld64.lld (see build.sh), which cannot resolve
+      # Apple's -ld_new.
+      - 0005-drop-ld-new-when-using-lld.patch
 
   # Prebuilt bun, used only to bootstrap scripts/build.ts (the source tarball
   # ships no binary). The selector is repeated on every line of each entry:

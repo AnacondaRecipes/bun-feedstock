@@ -30,6 +30,38 @@ export LIBRARY_PATH="${PREFIX}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
 # Xcode SDK, and fetches its own pinned SDK.
 export CI=true
 
+# conda: drive every macOS link with ld64.lld. conda's clang passes
+# `-lto_library <prefix>/lib/libLTO.21.1.dylib`, and Apple's ld rejects that
+# basename ("library filename must be 'libLTO.dylib'"); ld64.lld consumes the
+# bitcode itself and ignores the flag. bun resolves its compilers from
+# BUN_TOOLCHAIN_LLVM and the Rust host build scripts link with the same driver,
+# so a driver shim covers every link site. The flag is added only for link
+# invocations: compile-only steps would otherwise warn about an unused argument
+# and the build uses -Werror.
+if [[ "${target_platform}" == osx-* ]]; then
+  bun_toolchain="${SRC_DIR}/../bun-toolchain"
+  mkdir -p "${bun_toolchain}/bin"
+  for drv in clang clang++; do
+    cat > "${bun_toolchain}/bin/${drv}" <<EOF
+#!/bin/bash
+link=1
+for a in "\$@"; do
+  case "\$a" in -c|-S|-E|-M|-MM|-###) link=0 ;; esac
+done
+if [ "\$link" = "1" ]; then
+  exec "${BUILD_PREFIX}/bin/${drv}" -fuse-ld=lld "\$@"
+else
+  exec "${BUILD_PREFIX}/bin/${drv}" "\$@"
+fi
+EOF
+    chmod +x "${bun_toolchain}/bin/${drv}"
+  done
+  for tool in llvm-ar llvm-ranlib llvm-strip llvm-nm ld64.lld ld.lld dsymutil; do
+    ln -sf "${BUILD_PREFIX}/bin/${tool}" "${bun_toolchain}/bin/${tool}"
+  done
+  export BUN_TOOLCHAIN_LLVM="${bun_toolchain}"
+fi
+
 bun_args=(--profile=release)
 if [[ "${target_platform}" == linux-* ]]; then
   # conda's LLVM toolchain does not ship the static libatomic bun links by
