@@ -17,9 +17,11 @@ source:
       # We build with --ci on macOS (see build.sh) and upstream's CI "full" mode
       # skips the precompiled header, which several JSC/WebKit headers rely on.
       - 0003-keep-pch-in-ci-mode.patch
-      # macOS links go through ld64.lld (see build.sh), which cannot parse
-      # Apple's -ld_new.
-      - 0005-drop-ld-new-when-using-lld.patch
+      # macOS links go through ld64.lld (see build.sh): apply upstream's
+      # ld64.lld link fixups (cross-link only upstream) to native links too, and
+      # drop Apple's -ld_new. Without them `bun build --compile` fails with
+      # OverlappingSegments and the binary keeps an 8 MB (not 18 MB) stack.
+      - 0005-darwin-link-with-ld64-lld.patch
 
   # The rust-src component for the rust-nightly build dependency. The release
   # profile rebuilds std with -Zbuild-std, and conda's rust-nightly does not
@@ -139,6 +141,13 @@ test:
     # build.sh defers to load time.
     - bun -e "if (1 + 1 !== 2) process.exit(1)"
     - bun -e "if (!new Intl.NumberFormat('en').formatRange(1, 2)) process.exit(1)"
+    # `bun build --compile` must be able to embed a bundle into this binary
+    # (downstream feedstocks such as kilo are built this way). The bundle is
+    # >16 KB so it has to grow the placeholder section, not just fill it.
+    - bun -e "require('fs').writeFileSync('compile-test.js', 'console.log(' + JSON.stringify('x'.repeat(100000)) + '.length)')"
+    - bun build --compile compile-test.js --outfile compile-test
+    - ./compile-test | grep -Fx 100000  # [unix]
+    - compile-test.exe | findstr /L /C:100000  # [win]
 
 about:
   home: https://bun.sh
