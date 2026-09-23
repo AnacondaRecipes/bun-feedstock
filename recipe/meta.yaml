@@ -132,7 +132,9 @@ test:
     - bunx --version
     # Release build, not canary: `1.4.2+<sha>`, never `1.4.2-canary.N+<sha>`.
     - bun --revision | grep -Fx "{{ version }}+{{ git_sha[:9] }}"    # [unix]
-    - bun --revision | findstr /L /X /C:"{{ version }}+{{ git_sha[:9] }}"  # [win]
+    # findstr /X misses whole-line matches on piped input; a literal substring
+    # still rejects canary ("1.4.2-canary.1+<sha>" does not contain "1.4.2+<sha>").
+    - bun --revision | findstr /L /C:"{{ version }}+{{ git_sha[:9] }}"  # [win]
     # Exercise the JS engine, and on macOS the system-ICU symbols that
     # build.sh defers to load time.
     - bun -e "if (1 + 1 !== 2) process.exit(1)"
