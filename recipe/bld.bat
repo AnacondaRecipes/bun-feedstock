@@ -41,7 +41,9 @@ if not exist "%RUST_SRC%\library\Cargo.lock" exit 1
 xcopy /E /I /Q /Y "%RUST_SRC%" "%RUST_SYSROOT%\lib\rustlib\src\rust"
 if errorlevel 1 exit 1
 
-bun scripts/build.ts --profile=release
+REM bun defaults every build to canary (scripts/build/config.ts); upstream's
+REM release lanes pass --canary=off.
+bun scripts/build.ts --profile=release --canary=off
 if errorlevel 1 exit 1
 
 if not exist %LIBRARY_BIN% mkdir %LIBRARY_BIN%

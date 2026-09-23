@@ -30,7 +30,10 @@ fi
 mkdir -p "${rust_sysroot}/lib/rustlib/src"
 cp -a "${rust_src_lock%/library/Cargo.lock}" "${rust_sysroot}/lib/rustlib/src/"
 
-bun_args=(--profile=release)
+# bun defaults every build to canary (scripts/build/config.ts), which tags the
+# version "-canary.1", enables experimental features and points `bun upgrade`
+# at the canary channel. Upstream's release lanes pass --canary=off.
+bun_args=(--profile=release --canary=off)
 
 if [[ "${target_platform}" == osx-* ]]; then
   # bun drives clang itself and ignores the conda-injected CPPFLAGS, so expose
