@@ -1,5 +1,10 @@
 {% set name = "bun" %}
 {% set version = "1.4.2" %}
+# Commit the bun-v{{ version }} tag points at; the source tarball has no .git,
+# so the build reads the revision from GIT_SHA (scripts/build/config.ts).
+{% set git_sha = "744846f844374847c902b5e7fd59b4342a51ef99" %}
+# Must be the same nightly as the rust-nightly build dependency below.
+{% set rust_nightly_date = "2026-08-18" %}
 
 package:
   name: {{ name }}
@@ -9,20 +14,19 @@ source:
   - url: https://github.com/oven-sh/bun/archive/refs/tags/bun-v{{ version }}.tar.gz
     sha256: e14670b117d69012d828514d657f0a3133d1c25d13d69461184d05b6a8e9a876
     patches:
-      # The release profile's -Zbuild-std needs the rust-src component, which
-      # the rust-nightly package on defaults does not ship.
-      - 0001-don-t-build-std-in-release.patch
-      # The windows .bin/ shim links with /NODEFAULTLIB and got memcpy from
-      # -Zbuild-std-features=compiler-builtins-mem; supply it instead.
-      - 0002-windows-shim-memcpy.patch
-      # This header uses Bun::createClassStructure without including the header
-      # that declares it; only surfaces when the precompiled header is absent.
-      # We build with --ci (macOS needs the 13.0 deployment-target floor), and
-      # CI mode otherwise drops that PCH, so keep it enabled instead.
+      # We build with --ci on macOS (see build.sh) and upstream's CI "full" mode
+      # skips the precompiled header, which several JSC/WebKit headers rely on.
       - 0003-keep-pch-in-ci-mode.patch
-      # macOS links go through ld64.lld (see build.sh), which cannot resolve
+      # macOS links go through ld64.lld (see build.sh), which cannot parse
       # Apple's -ld_new.
       - 0005-drop-ld-new-when-using-lld.patch
+
+  # The rust-src component for the rust-nightly build dependency. The release
+  # profile rebuilds std with -Zbuild-std, and conda's rust-nightly does not
+  # ship rust-src. build.sh / bld.bat copy it into the rustc sysroot.
+  - url: https://static.rust-lang.org/dist/{{ rust_nightly_date }}/rust-src-nightly.tar.xz
+    sha256: f8b984f0f9a4f542a73c85be1bc379fe88455c5e96f70bd19052511d0195f5e4
+    folder: rust-src
 
   # Prebuilt bun, used only to bootstrap scripts/build.ts (the source tarball
   # ships no binary). The selector is repeated on every line of each entry:
@@ -71,6 +75,12 @@ build:
   # already"). bun's link emits no RPATH and every DT_NEEDED is a system
   # library (libc/ld-linux/libpthread/libdl/libm), so it is not needed.
   binary_relocation: false
+  script_env:
+    - GIT_SHA={{ git_sha }}
+  # icu is only in host for its headers: bun links the system libicucore on
+  # macOS (scripts/build/bun.ts), never conda's ICU.
+  ignore_run_exports:  # [osx]
+    - icu  # [osx]
 
 requirements:
   build:
@@ -84,36 +94,43 @@ requirements:
     - lld 21.1.8
     - llvm-tools 21.1.8
     - cmake
-    - git
-    - nasm
-    - perl
-    - sed        # [unix]
+    - git        # vendored-dep patches are applied with `git apply`
+    - nasm       # boringssl / libjpeg-turbo assembly
+    - perl       # boringssl + LUT codegen
     - ninja-base
-    - pkg-config
+    # bun links libatomic statically on linux (-l:libatomic.a); gcc_impl is
+    # the package that ships libatomic.a in the GCC install dir clang searches.
+    - gcc_impl_{{ target_platform }} 15.2.0  # [linux]
     # Upstream pins nightly-2026-07-20 in rust-toolchain.toml, which is not on
-    # defaults; this is the nearest available nightly.
-    - rust-nightly 1.100.0_2026_08_18
-  # bun links libatomic on linux; on defaults it is shipped by libgcc (there is
-  # no libatomic package), and only from 15 onwards.
-  # The osx build needs ICU headers for the prebuilt WebKit headers; the
-  # linux/windows prebuilts bundle their own ICU.
+    # defaults; this is the nearest available nightly. rust-src above must be
+    # from the same nightly.
+    - rust-nightly 1.100.0_{{ rust_nightly_date | replace("-", "_") }}
+  # The osx build needs ICU headers for the prebuilt WebKit headers (the worker
+  # SDK is too old to ship them); the linux/windows prebuilts bundle their own.
   host:
-    - libgcc 15.2.0  # [linux]
     - icu 78.3       # [osx]
   run:
-    - libgcc >=15  # [linux]
+    # bun's --ci build uses a 13.0 deployment target, above the aggregate
+    # c_stdlib_version, so the stdlib run_export alone is too permissive.
+    - __osx >=13.0  # [osx]
 
 test:
-  # bun emits these on unix only; on Windows `bun completions` targets
-  # PowerShell, which upstream has not implemented (oven-sh/bun#8939).
   files:
     - share/bash-completion/completions/bun  # [unix]
     - share/zsh/site-functions/_bun  # [unix]
     - share/fish/vendor_completions.d/bun.fish  # [unix]
+    - Library/share/bash-completion/completions/bun  # [win]
+    - Library/share/zsh/site-functions/_bun  # [win]
+    - Library/share/fish/vendor_completions.d/bun.fish  # [win]
   commands:
     - bun --version
     - bun --help
     - bunx --version
+    - bun --revision
+    # Exercise the JS engine, and on macOS the system-ICU symbols that
+    # build.sh defers to load time.
+    - bun -e "if (1 + 1 !== 2) process.exit(1)"
+    - bun -e "if (!new Intl.NumberFormat('en').formatRange(1, 2)) process.exit(1)"
 
 about:
   home: https://bun.sh
@@ -141,7 +158,3 @@ extra:
     - xhochy
     - pavelzw
     - I-Al-Istannen
-  # libgcc is the only provider of libatomic on defaults, and it cannot be
-  # pulled in through the compiler/stdlib packages.
-  skip-lints:
-    - should_use_compilers

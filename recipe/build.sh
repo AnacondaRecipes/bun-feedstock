@@ -10,83 +10,59 @@ if [[ -z "${BUN_BOOTSTRAP}" ]]; then
 fi
 export PATH="$(dirname "${BUN_BOOTSTRAP}"):${PATH}"
 
-# The source tarball has no .git checkout, so the build cannot derive a
-# revision; supply the release commit.
-export GIT_SHA=744846f844374847c902b5e7fd59b4342a51ef99
+# The source tarball has no .git checkout; meta.yaml passes the release commit
+# via script_env. Fail loudly rather than silently building revision "unknown".
+: "${GIT_SHA:?GIT_SHA must be set by meta.yaml script_env}"
 
 # Use the conda LLVM/Rust toolchains instead of letting the build fetch its own.
 export BUN_TOOLCHAIN_LLVM="${BUILD_PREFIX}"
 export BUN_TOOLCHAIN_RUST="${BUILD_PREFIX}"
 export BUN_TOOLCHAIN_CARGO="${BUILD_PREFIX}/bin/cargo"
 
-# bun drives clang itself and ignores the conda-injected CPPFLAGS/LDFLAGS, so
-# expose the host prefix the way those flags would: CPATH is an implicit include
-# path for clang, LIBRARY_PATH an implicit -L for its driver.
-export CPATH="${PREFIX}/include${CPATH:+:${CPATH}}"
-export LIBRARY_PATH="${PREFIX}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
-
-# CI=true makes the build take its CI path: on macOS it uses the minimum
-# supported deployment target (13.0) instead of probing the worker's older
-# Xcode SDK, and fetches its own pinned SDK.
-export CI=true
-
-# conda: drive every macOS link with ld64.lld. conda's clang passes
-# `-lto_library <prefix>/lib/libLTO.21.1.dylib`, and Apple's ld rejects that
-# basename ("library filename must be 'libLTO.dylib'"); ld64.lld consumes the
-# bitcode itself and ignores the flag. bun resolves its compilers from
-# BUN_TOOLCHAIN_LLVM and the Rust host build scripts link with the same driver,
-# so a driver shim covers every link site. The flag is added only for link
-# invocations: compile-only steps would otherwise warn about an unused argument
-# and the build uses -Werror.
-if [[ "${target_platform}" == osx-* ]]; then
-  bun_toolchain="${SRC_DIR}/../bun-toolchain"
-  # ICU entry points bun's prebuilt WebKit references that the worker's SDK
-  # libicucore stub does not list, even though the OS ICU provides them (the
-  # NumberRangeFormatter C API plus ubrk_clone/uplrules/udtitvfmt/ucal belong to
-  # APIs stable since ICU 68, and the workers run macOS 12+). ld64.lld refuses
-  # to link against an unresolved symbol, so mark exactly these as
-  # allowed-undefined: dyld binds them from the system libicucore at load time.
-  # Extend this list if a link error names a further _u* symbol.
-  bun_icu_undef=""
-  for sym in \
-    unumrf_closeResult unumrf_openResult unumrf_resultAsValue \
-    unumrf_formatDoubleRange unumrf_formatDecimalRange unumrf_close \
-    unumrf_openForSkeletonWithCollapseAndIdentityFallback \
-    ubrk_clone uplrules_selectForRange udtitvfmt_formatCalendarToResult \
-    ucal_getTimeZoneOffsetFromLocal; do
-    bun_icu_undef="${bun_icu_undef} -Wl,-U,_${sym}"
-  done
-  mkdir -p "${bun_toolchain}/bin"
-  for drv in clang clang++; do
-    cat > "${bun_toolchain}/bin/${drv}" <<EOF
-#!/bin/bash
-link=1
-for a in "\$@"; do
-  case "\$a" in -c|-S|-E|-M|-MM|-###) link=0 ;; esac
-done
-if [ "\$link" = "1" ]; then
-  exec "${BUILD_PREFIX}/bin/${drv}" -fuse-ld=lld${bun_icu_undef} "\$@"
-else
-  exec "${BUILD_PREFIX}/bin/${drv}" "\$@"
+# The release profile rebuilds std with -Zbuild-std, which needs the rust-src
+# component (a separate meta.yaml source) inside the rustc sysroot.
+rust_sysroot="$("${BUILD_PREFIX}/bin/rustc" --print sysroot)"
+rust_src_lock="$(find "${SRC_DIR}/rust-src" -path '*/lib/rustlib/src/rust/library/Cargo.lock' | head -1)"
+if [[ -z "${rust_src_lock}" ]]; then
+  echo "rust-src component not found under ${SRC_DIR}/rust-src" >&2
+  exit 1
 fi
-EOF
-    chmod +x "${bun_toolchain}/bin/${drv}"
-  done
-  for tool in llvm-ar llvm-ranlib llvm-strip llvm-nm ld64.lld ld.lld dsymutil; do
-    ln -sf "${BUILD_PREFIX}/bin/${tool}" "${bun_toolchain}/bin/${tool}"
-  done
-  export BUN_TOOLCHAIN_LLVM="${bun_toolchain}"
-fi
+mkdir -p "${rust_sysroot}/lib/rustlib/src"
+cp -a "${rust_src_lock%/library/Cargo.lock}" "${rust_sysroot}/lib/rustlib/src/"
 
 bun_args=(--profile=release)
-if [[ "${target_platform}" == linux-* ]]; then
-  # conda's LLVM toolchain does not ship the static libatomic bun links by
-  # default, which fails the final link with `unable to find library -l:libatomic.a`.
-  bun_args+=(--static-libatomic=off)
-fi
+
 if [[ "${target_platform}" == osx-* ]]; then
-  # The CI build flags use the minimum supported macOS deployment target (13.0)
-  # instead of probing the worker's older Xcode SDK.
+  # bun drives clang itself and ignores the conda-injected CPPFLAGS, so expose
+  # the host prefix's ICU headers through clang's implicit include path.
+  export CPATH="${PREFIX}/include${CPATH:+:${CPATH}}"
+
+  # conda's clang passes `-lto_library <prefix>/lib/libLTO.21.1.dylib` to the
+  # linker, and Apple's ld rejects that basename ("library filename must be
+  # 'libLTO.dylib'"). Link with ld64.lld instead, via clang config files: clang
+  # reads <driver>.cfg next to its binary, and options from a config file do
+  # not trigger unused-argument warnings on compile-only invocations (-Werror).
+  #
+  # The -U entries are ICU symbols the prebuilt WebKit references but the
+  # worker's older SDK libicucore stub does not list. The OS libicucore on the
+  # 13.0 deployment floor exports all of them (the upstream release binary
+  # imports the same 11 symbols with minos 13.0), so let dyld bind them at load.
+  for drv in clang clang++; do
+    {
+      echo "-fuse-ld=lld"
+      for sym in \
+        unumrf_closeResult unumrf_openResult unumrf_resultAsValue \
+        unumrf_formatDoubleRange unumrf_formatDecimalRange unumrf_close \
+        unumrf_openForSkeletonWithCollapseAndIdentityFallback \
+        ubrk_clone uplrules_selectForRange udtitvfmt_formatCalendarToResult \
+        ucal_getTimeZoneOffsetFromLocal; do
+        echo "-Wl,-U,_${sym}"
+      done
+    } >> "${BUILD_PREFIX}/bin/${drv}.cfg"
+  done
+
+  # bun refuses an SDK older than 13.0 unless --ci is set; --ci floors the
+  # deployment target at 13.0 instead of probing the worker's older Xcode SDK.
   bun_args+=(--ci=true)
 fi
 
@@ -96,15 +72,11 @@ mkdir -p "${PREFIX}/bin"
 cp build/release/bun "${PREFIX}/bin/bun"
 ln -sf bun "${PREFIX}/bin/bunx"
 
-# The shell completion text is architecture-independent.
-mkdir -p "${PREFIX}/share/zsh/site-functions"
-SHELL=zsh "${PREFIX}/bin/bun" completions > "${PREFIX}/share/zsh/site-functions/_bun"
-grep -q '_bun_add_completion' "${PREFIX}/share/zsh/site-functions/_bun"
-
-mkdir -p "${PREFIX}/share/bash-completion/completions"
-SHELL=bash "${PREFIX}/bin/bun" completions > "${PREFIX}/share/bash-completion/completions/bun"
-grep -q '_file_arguments()' "${PREFIX}/share/bash-completion/completions/bun"
-
-mkdir -p "${PREFIX}/share/fish/vendor_completions.d"
-SHELL=fish "${PREFIX}/bin/bun" completions > "${PREFIX}/share/fish/vendor_completions.d/bun.fish"
-grep -q '__fish__get_bun_bins' "${PREFIX}/share/fish/vendor_completions.d/bun.fish"
+# `bun completions` prints these files verbatim (include_bytes! in
+# src/runtime/cli/shell_completions.rs), so install them from the source tree.
+mkdir -p "${PREFIX}/share/zsh/site-functions" \
+  "${PREFIX}/share/bash-completion/completions" \
+  "${PREFIX}/share/fish/vendor_completions.d"
+cp completions/bun.zsh "${PREFIX}/share/zsh/site-functions/_bun"
+cp completions/bun.bash "${PREFIX}/share/bash-completion/completions/bun"
+cp completions/bun.fish "${PREFIX}/share/fish/vendor_completions.d/bun.fish"
