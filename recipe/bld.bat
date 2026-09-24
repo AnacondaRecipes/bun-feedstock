@@ -23,23 +23,14 @@ set BUN_TOOLCHAIN_RUST=%BUILD_PREFIX%\Library
 set BUN_TOOLCHAIN_CARGO=%BUILD_PREFIX%\Library\bin\cargo.exe
 set "PATH=%BUILD_PREFIX%\Library\bin;%PATH%"
 
-REM The release profile (and the .bin\ shim) rebuild std/core with -Zbuild-std,
-REM which needs the rust-src component (a separate meta.yaml source) inside the
-REM rustc sysroot.
+REM -Zbuild-std (release profile and the .bin\ shim) needs rust-src (the
+REM rust-src-nightly build dep) in the rustc sysroot.
 set "RUST_SYSROOT="
 for /f "delims=" %%i in ('rustc --print sysroot') do set "RUST_SYSROOT=%%i"
-if not defined RUST_SYSROOT exit 1
-REM conda-build strips the tarball's single top-level directory; accept both.
-set "RUST_SRC="
-if exist "%SRC_DIR%\rust-src\rust-src\lib\rustlib\src\rust\library\Cargo.lock" set "RUST_SRC=%SRC_DIR%\rust-src\rust-src\lib\rustlib\src\rust"
-if exist "%SRC_DIR%\rust-src\rust-src-nightly\rust-src\lib\rustlib\src\rust\library\Cargo.lock" set "RUST_SRC=%SRC_DIR%\rust-src\rust-src-nightly\rust-src\lib\rustlib\src\rust"
-if not defined RUST_SRC (
-  echo rust-src component not found under %SRC_DIR%\rust-src
+if not exist "%RUST_SYSROOT%\lib\rustlib\src\rust\library\Cargo.lock" (
+  echo rust-src not found in the rustc sysroot %RUST_SYSROOT%
   exit 1
 )
-if not exist "%RUST_SRC%\library\Cargo.lock" exit 1
-xcopy /E /I /Q /Y "%RUST_SRC%" "%RUST_SYSROOT%\lib\rustlib\src\rust"
-if errorlevel 1 exit 1
 
 REM bun defaults every build to canary (scripts/build/config.ts); upstream's
 REM release lanes pass --canary=off.

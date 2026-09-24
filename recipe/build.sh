@@ -19,16 +19,8 @@ export BUN_TOOLCHAIN_LLVM="${BUILD_PREFIX}"
 export BUN_TOOLCHAIN_RUST="${BUILD_PREFIX}"
 export BUN_TOOLCHAIN_CARGO="${BUILD_PREFIX}/bin/cargo"
 
-# The release profile rebuilds std with -Zbuild-std, which needs the rust-src
-# component (a separate meta.yaml source) inside the rustc sysroot.
-rust_sysroot="$("${BUILD_PREFIX}/bin/rustc" --print sysroot)"
-rust_src_lock="$(find "${SRC_DIR}/rust-src" -path '*/lib/rustlib/src/rust/library/Cargo.lock' | head -1)"
-if [[ -z "${rust_src_lock}" ]]; then
-  echo "rust-src component not found under ${SRC_DIR}/rust-src" >&2
-  exit 1
-fi
-mkdir -p "${rust_sysroot}/lib/rustlib/src"
-cp -a "${rust_src_lock%/library/Cargo.lock}" "${rust_sysroot}/lib/rustlib/src/"
+# -Zbuild-std needs rust-src (the rust-src-nightly build dep) in the sysroot.
+test -f "$("${BUILD_PREFIX}/bin/rustc" --print sysroot)/lib/rustlib/src/rust/library/Cargo.lock"
 
 # bun defaults every build to canary (scripts/build/config.ts), which tags the
 # version "-canary.1", enables experimental features and points `bun upgrade`

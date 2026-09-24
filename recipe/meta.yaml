@@ -3,8 +3,8 @@
 # Commit the bun-v{{ version }} tag points at; the source tarball has no .git,
 # so the build reads the revision from GIT_SHA (scripts/build/config.ts).
 {% set git_sha = "744846f844374847c902b5e7fd59b4342a51ef99" %}
-# Must be the same nightly as the rust-nightly build dependency below.
-{% set rust_nightly_date = "2026-08-18" %}
+# The Rust nightly upstream pins in rust-toolchain.toml (nightly-2026-07-20).
+{% set rust_nightly = "1.99.0_2026_07_20" %}
 
 package:
   name: {{ name }}
@@ -22,13 +22,6 @@ source:
       # drop Apple's -ld_new. Without them `bun build --compile` fails with
       # OverlappingSegments and the binary keeps an 8 MB (not 18 MB) stack.
       - 0005-darwin-link-with-ld64-lld.patch
-
-  # The rust-src component for the rust-nightly build dependency. The release
-  # profile rebuilds std with -Zbuild-std, and conda's rust-nightly does not
-  # ship rust-src. build.sh / bld.bat copy it into the rustc sysroot.
-  - url: https://static.rust-lang.org/dist/{{ rust_nightly_date }}/rust-src-nightly.tar.xz
-    sha256: f8b984f0f9a4f542a73c85be1bc379fe88455c5e96f70bd19052511d0195f5e4
-    folder: rust-src
 
   # Prebuilt bun, used only to bootstrap scripts/build.ts (the source tarball
   # ships no binary). The selector is repeated on every line of each entry:
@@ -107,10 +100,11 @@ requirements:
     # bun links libatomic statically on linux (-l:libatomic.a); gcc_impl is
     # the package that ships libatomic.a in the GCC install dir clang searches.
     - gcc_impl_{{ target_platform }} 15.2.0  # [linux]
-    # Upstream pins nightly-2026-07-20 in rust-toolchain.toml, which is not on
-    # defaults; this is the nearest available nightly. rust-src above must be
-    # from the same nightly.
-    - rust-nightly 1.100.0_{{ rust_nightly_date | replace("-", "_") }}
+    # Upstream's pinned nightly. The release profile rebuilds std with
+    # -Zbuild-std, which needs rust-src in the rustc sysroot; rust-src-nightly
+    # installs it there and is constrained to this exact rust-nightly build.
+    - rust-nightly {{ rust_nightly }}
+    - rust-src-nightly {{ rust_nightly }}
   # The osx build needs ICU headers for the prebuilt WebKit headers (the worker
   # SDK is too old to ship them); the linux/windows prebuilts bundle their own.
   host:
