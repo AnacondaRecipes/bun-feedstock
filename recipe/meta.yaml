@@ -1,0 +1,171 @@
+{% set name = "bun" %}
+{% set version = "1.4.2" %}
+# Commit the bun-v{{ version }} tag points at; the source tarball has no .git,
+# so the build reads the revision from GIT_SHA (scripts/build/config.ts).
+{% set git_sha = "744846f844374847c902b5e7fd59b4342a51ef99" %}
+# The Rust nightly upstream pins in rust-toolchain.toml (nightly-2026-07-20).
+{% set rust_nightly = "1.99.0_2026_07_20" %}
+
+package:
+  name: {{ name }}
+  version: {{ version }}
+
+source:
+  - url: https://github.com/oven-sh/bun/archive/refs/tags/bun-v{{ version }}.tar.gz
+    sha256: e14670b117d69012d828514d657f0a3133d1c25d13d69461184d05b6a8e9a876
+    patches:
+      # We build with --ci on macOS (see build.sh) and upstream's CI "full" mode
+      # skips the precompiled header, which several JSC/WebKit headers rely on.
+      - 0003-keep-pch-in-ci-mode.patch
+      # macOS links go through ld64.lld (see build.sh): apply upstream's
+      # ld64.lld link fixups (cross-link only upstream) to native links too, and
+      # drop Apple's -ld_new. Without them `bun build --compile` fails with
+      # OverlappingSegments and the binary keeps an 8 MB (not 18 MB) stack.
+      - 0005-darwin-link-with-ld64-lld.patch
+
+  # Prebuilt bun, used only to bootstrap scripts/build.ts (the source tarball
+  # ships no binary). The selector is repeated on every line of each entry:
+  # a selector on only the url line leaves the sha256/folder lines behind and
+  # they attach to the neighbouring entry.
+  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-linux-x64-baseline.zip  # [linux and x86_64]
+    sha256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f  # [linux and x86_64]
+    folder: bun.native  # [linux and x86_64]
+  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-linux-aarch64.zip  # [linux and aarch64]
+    sha256: 54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7  # [linux and aarch64]
+    folder: bun.native  # [linux and aarch64]
+  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-darwin-x64.zip  # [osx and x86_64]
+    sha256: 80520d7e17526308c9185d261679ac6d27798d3803a0e9f7ff9121ab8affb012  # [osx and x86_64]
+    folder: bun.native  # [osx and x86_64]
+  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-darwin-aarch64.zip  # [osx and arm64]
+    sha256: 90987a3a16d7db556d886ac3d551e7b6d3edf0a1cf43acaed622e8676be1d12f  # [osx and arm64]
+    folder: bun.native  # [osx and arm64]
+  - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-windows-x64.zip  # [win]
+    sha256: ce4c17497b2f29712a99d3d53f028de28cd42e3bacb8589599e7f000e49b6405  # [win]
+    folder: bun.native  # [win]
+
+  # Licences for the statically linked internal forks.
+  - url: https://raw.githubusercontent.com/google/boringssl/refs/heads/main/LICENSE
+    sha256: 827c8d8fc207c2392794eef9e00fe246f9f61fdcc132556c275be3dd8c3cd97f
+    fn: boringssl-LICENSE
+  - url: https://raw.githubusercontent.com/microsoft/mimalloc/refs/heads/main/LICENSE
+    sha256: 82ade5d7d9b029044b5fbbc326207fc47c2d44ee4dd71e8a559c36d728217de9
+    fn: mimalloc-LICENSE
+  - url: https://raw.githubusercontent.com/TinyCC/tinycc/refs/heads/mob/COPYING
+    sha256: 512d2d21b6b3384ba64781abb0208a1b87740bc31e2df48e2b206ddb7e4d5779
+    fn: tinycc-LICENSE
+  - url: https://raw.githubusercontent.com/simdutf/simdutf/refs/heads/master/LICENSE-MIT
+    sha256: fc8dbc04e03ad4efc08a647ffe7f995b811a95bc04c0e85a56d5277c6593fa5f
+    fn: simdutf-LICENSE-MIT
+  - url: https://raw.githubusercontent.com/simdutf/simdutf/refs/heads/master/LICENSE-APACHE
+    sha256: 3d34610fc6b5e1b0bfe4e2f36171c2d62c28ef05cb8d704f5a0073be41a43b3d
+    fn: simdutf-LICENSE-APACHE
+
+build:
+  number: 0
+  # conda-build's rpath step (patchelf --force-rpath --set-rpath $ORIGIN/../lib)
+  # appends a PT_LOAD to this 75 MB binary whose page range overlaps the next
+  # segment's first page, giving an ELF the kernel refuses to map -- the linux
+  # test then dies with SIGSEGV at exec, before any code runs
+  # ("Uhuuh, elf segment at 0x20f000 requested but the memory is mapped
+  # already"). bun's link emits no RPATH and every DT_NEEDED is a system
+  # library (libc/ld-linux/libpthread/libdl/libm), so it is not needed.
+  binary_relocation: false
+  script_env:
+    - GIT_SHA={{ git_sha }}
+  # bun links its C++ runtime statically (conda-build reports these as unused
+  # run deps), and icu is only in host for its headers: bun links the system
+  # libicucore on macOS (scripts/build/bun.ts), never conda's ICU.
+  ignore_run_exports:
+    - libstdcxx     # [linux]
+    - libcxx        # [osx]
+    - icu           # [osx]
+    - vc14_runtime  # [win]
+
+requirements:
+  build:
+    - {{ compiler('c') }}
+    - {{ compiler('cxx') }}
+    - {{ stdlib('c') }}
+    # bun requires LLVM 21 (upstream CONTRIBUTING); pin the three so the
+    # compiler, linker and binutils cannot resolve to different majors.
+    # No selector: windows needs clang-cl/lld-link/llvm-rc here too.
+    - clang 21.1.8
+    - lld 21.1.8
+    - llvm-tools 21.1.8
+    - cmake
+    - git        # vendored-dep patches are applied with `git apply`
+    - nasm       # boringssl / libjpeg-turbo assembly
+    - perl       # boringssl + LUT codegen
+    - ninja-base
+    # bun links libatomic statically on linux (-l:libatomic.a); gcc_impl is
+    # the package that ships libatomic.a in the GCC install dir clang searches.
+    - gcc_impl_{{ target_platform }} 15.2.0  # [linux]
+    # Upstream's pinned nightly. The release profile rebuilds std with
+    # -Zbuild-std, which needs rust-src in the rustc sysroot; rust-src-nightly
+    # installs it there and is constrained to this exact rust-nightly build.
+    - rust-nightly {{ rust_nightly }}
+    - rust-src-nightly {{ rust_nightly }}
+  # The osx build needs ICU headers for the prebuilt WebKit headers (the worker
+  # SDK is too old to ship them); the linux/windows prebuilts bundle their own.
+  host:
+    - icu 78.3       # [osx]
+  run:
+    # bun's --ci build uses a 13.0 deployment target, above the aggregate
+    # c_stdlib_version, so the stdlib run_export alone is too permissive.
+    - __osx >=13.0  # [osx]
+
+test:
+  files:
+    - share/bash-completion/completions/bun  # [unix]
+    - share/zsh/site-functions/_bun  # [unix]
+    - share/fish/vendor_completions.d/bun.fish  # [unix]
+    - Library/share/bash-completion/completions/bun  # [win]
+    - Library/share/zsh/site-functions/_bun  # [win]
+    - Library/share/fish/vendor_completions.d/bun.fish  # [win]
+  commands:
+    - bun --version
+    - bun --help
+    - bunx --version
+    # Release build, not canary: `1.4.2+<sha>`, never `1.4.2-canary.N+<sha>`.
+    - bun --revision | grep -Fx "{{ version }}+{{ git_sha[:9] }}"    # [unix]
+    # findstr /X misses whole-line matches on piped input; a literal substring
+    # still rejects canary ("1.4.2-canary.1+<sha>" does not contain "1.4.2+<sha>").
+    - bun --revision | findstr /L /C:"{{ version }}+{{ git_sha[:9] }}"  # [win]
+    # Exercise the JS engine, and on macOS the system-ICU symbols that
+    # build.sh defers to load time.
+    - bun -e "if (1 + 1 !== 2) process.exit(1)"
+    - bun -e "if (!new Intl.NumberFormat('en').formatRange(1, 2)) process.exit(1)"
+    # `bun build --compile` must be able to embed a bundle into this binary
+    # (downstream feedstocks such as kilo are built this way). The bundle is
+    # >16 KB so it has to grow the placeholder section, not just fill it.
+    - bun -e "require('fs').writeFileSync('compile-test.js', 'console.log(' + JSON.stringify('x'.repeat(100000)) + '.length)')"
+    - bun build --compile compile-test.js --outfile compile-test
+    - ./compile-test | grep -Fx 100000  # [unix]
+    - compile-test.exe | findstr /L /C:100000  # [win]
+
+about:
+  home: https://bun.sh
+  dev_url: https://github.com/oven-sh/bun
+  doc_url: https://bun.sh/docs
+  license: MIT
+  license_family: MIT
+  license_file:
+    - LICENSE.md
+    - tinycc-LICENSE
+    - boringssl-LICENSE
+    - mimalloc-LICENSE
+    - picohttp-LICENSE-MIT
+    - simdutf-LICENSE-MIT
+    - simdutf-LICENSE-APACHE
+    - packages/bun-usockets/LICENSE
+    - packages/bun-uws/LICENSE
+  summary: Bun is a fast all-in-one JavaScript runtime
+  description: |
+    Bun is an all-in-one JavaScript runtime and toolkit distributed as a single
+    executable: runtime, bundler, test runner and package manager.
+
+extra:
+  recipe-maintainers:
+    - xhochy
+    - pavelzw
+    - I-Al-Istannen

@@ -1,0 +1,5 @@
+# rust-nightly 1.99.0_2026_07_20 / rust-src-nightly are not on pkgs/main yet
+# (AnacondaRecipes/rust-feedstock#39). Resolve them from that PR's staging
+# channel; remove this file once they are on main.
+channels:
+  - https://staging.continuum.io/pbp/fs/rust-feedstock/pr39/0bd0109
