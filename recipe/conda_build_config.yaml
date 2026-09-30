@@ -11,3 +11,8 @@ cxx_compiler_version:
   - 21                         # [linux or osx]
 # c_stdlib_version is left to the aggregate: forcing 13.0 on osx points
 # CONDA_BUILD_SYSROOT at a macOS 13 SDK the workers do not have.
+# Upstream pins nightly-2026-07-20 in rust-toolchain.toml. Used directly for
+# rust-nightly / rust-src-nightly: there is no rust-nightly activation package
+# (compiler('rust_nightly')) for this nightly on main.
+rust_nightly_compiler_version:
+  - 1.99.0_2026_07_20

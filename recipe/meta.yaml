@@ -3,8 +3,6 @@
 # Commit the bun-v{{ version }} tag points at; the source tarball has no .git,
 # so the build reads the revision from GIT_SHA (scripts/build/config.ts).
 {% set git_sha = "744846f844374847c902b5e7fd59b4342a51ef99" %}
-# The Rust nightly upstream pins in rust-toolchain.toml (nightly-2026-07-20).
-{% set rust_nightly = "1.99.0_2026_07_20" %}
 
 package:
   name: {{ name }}
@@ -103,8 +101,8 @@ requirements:
     # Upstream's pinned nightly. The release profile rebuilds std with
     # -Zbuild-std, which needs rust-src in the rustc sysroot; rust-src-nightly
     # installs it there and is constrained to this exact rust-nightly build.
-    - rust-nightly {{ rust_nightly }}
-    - rust-src-nightly {{ rust_nightly }}
+    - rust-nightly {{ rust_nightly_compiler_version }}
+    - rust-src-nightly {{ rust_nightly_compiler_version }}
   # The osx build needs ICU headers for the prebuilt WebKit headers (the worker
   # SDK is too old to ship them); the linux/windows prebuilts bundle their own.
   host:
