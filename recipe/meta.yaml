@@ -1,8 +1,14 @@
 {% set name = "bun" %}
 {% set version = "1.4.2" %}
 # Commit the bun-v{{ version }} tag points at; the source tarball has no .git,
-# so the build reads the revision from GIT_SHA (scripts/build/config.ts).
+# so build.sh hands it to scripts/build.ts as the revision.
 {% set git_sha = "744846f844374847c902b5e7fd59b4342a51ef99" %}
+# WEBKIT_VERSION in scripts/build/deps/webkit.ts (build.sh checks they match).
+{% set webkit_version = "2e2aa2290fac856d6f451ceacb58f7f5b44dd057" %}
+{% set webkit_asset = "bun-webkit-linux-amd64" %}  # [linux and x86_64]
+{% set webkit_asset = "bun-webkit-linux-arm64" %}  # [linux and aarch64]
+{% set webkit_asset = "bun-webkit-macos-arm64" %}  # [osx and arm64]
+{% set webkit_asset = "bun-webkit-windows-amd64" %}  # [win]
 
 package:
   name: {{ name }}
@@ -41,22 +47,41 @@ source:
     sha256: ce4c17497b2f29712a99d3d53f028de28cd42e3bacb8589599e7f000e49b6405  # [win]
     folder: bun.native  # [win]
 
-  # Licences for the statically linked internal forks.
-  - url: https://raw.githubusercontent.com/google/boringssl/refs/heads/main/LICENSE
-    sha256: 827c8d8fc207c2392794eef9e00fe246f9f61fdcc132556c275be3dd8c3cd97f
-    fn: boringssl-LICENSE
-  - url: https://raw.githubusercontent.com/microsoft/mimalloc/refs/heads/main/LICENSE
-    sha256: 82ade5d7d9b029044b5fbbc326207fc47c2d44ee4dd71e8a559c36d728217de9
-    fn: mimalloc-LICENSE
-  - url: https://raw.githubusercontent.com/TinyCC/tinycc/refs/heads/mob/COPYING
-    sha256: 512d2d21b6b3384ba64781abb0208a1b87740bc31e2df48e2b206ddb7e4d5779
-    fn: tinycc-LICENSE
-  - url: https://raw.githubusercontent.com/simdutf/simdutf/refs/heads/master/LICENSE-MIT
+  # oven-sh/WebKit prebuilt JavaScriptCore/WebKit: upstream's default
+  # `prebuilt` mode (building WebKit from source is not feasible here). bun's
+  # downloader keys its cache on the URL and never checks the bytes, so it is
+  # pinned here and build.sh serves it via BUN_BUILD_PREFETCH_DIR. The .bin
+  # name stops conda-build from extracting it.
+  - url: https://github.com/oven-sh/WebKit/releases/download/autobuild-{{ webkit_version }}/{{ webkit_asset }}.tar.gz
+    sha256: 2c614235705e1c30048125671e2cdaa93849ea3bf4e0b9a904e3c7368312af0a  # [linux and x86_64]
+    sha256: 35adf76b39487bbc07c162d79f79ffd18801e5d7937f0df72d24db8dc2043b6e  # [linux and aarch64]
+    sha256: 348d4b9a97d2a17e997e9b09d084761e88748dd20586b15317f717299de70ab2  # [osx and arm64]
+    sha256: 692315885cf2d1e426da22ff031c6ade9c4a8e1be989ff7f70e0cb7390c53b17  # [win]
+    fn: bun-webkit-prebuilt.bin
+    folder: webkit-prebuilt
+
+  # Licences of statically linked code that the build does not unpack into
+  # vendor/: WebKit/JavaScriptCore (LGPL) and its bundled simdutf, pinned to
+  # the WebKit commit above, and ICU 78 (bundled by the linux/windows
+  # prebuilts; headers on macOS).
+  - url: https://raw.githubusercontent.com/oven-sh/WebKit/{{ webkit_version }}/Source/JavaScriptCore/COPYING.LIB
+    sha256: 5094ecb9c9dcd0eadc34f3c11511d9b5535063032bc150164ecd1a5d5a445547
+    fn: webkit-JavaScriptCore-COPYING.LIB
+  - url: https://raw.githubusercontent.com/oven-sh/WebKit/{{ webkit_version }}/Source/WebCore/LICENSE-LGPL-2
+    sha256: 7555fa34bc131a75ca56d65c40cc1ea8f9515d23e353d4c15d58573a042f7805
+    fn: webkit-WebCore-LICENSE-LGPL-2
+  - url: https://raw.githubusercontent.com/oven-sh/WebKit/{{ webkit_version }}/Source/WebCore/LICENSE-LGPL-2.1
+    sha256: f2b3bd09663381deb99721109d22b47af1213bb43007a8b56a06c6375c8050ce
+    fn: webkit-WebCore-LICENSE-LGPL-2.1
+  - url: https://raw.githubusercontent.com/oven-sh/WebKit/{{ webkit_version }}/Source/WebCore/LICENSE-APPLE
+    sha256: 0b5d3a7cc325942567373b0ecd757d07c132e0ebd7c97bfc63f7e1a76094edb4
+    fn: webkit-WebCore-LICENSE-APPLE
+  - url: https://raw.githubusercontent.com/oven-sh/WebKit/{{ webkit_version }}/Source/WTF/wtf/simdutf/LICENSE-simdutf.txt
     sha256: fc8dbc04e03ad4efc08a647ffe7f995b811a95bc04c0e85a56d5277c6593fa5f
-    fn: simdutf-LICENSE-MIT
-  - url: https://raw.githubusercontent.com/simdutf/simdutf/refs/heads/master/LICENSE-APACHE
-    sha256: 3d34610fc6b5e1b0bfe4e2f36171c2d62c28ef05cb8d704f5a0073be41a43b3d
-    fn: simdutf-LICENSE-APACHE
+    fn: simdutf-LICENSE
+  - url: https://raw.githubusercontent.com/unicode-org/icu/release-78.1/icu4c/LICENSE
+    sha256: 1e881ecf2862d01e6e5bc2b861e46886d2a6fb01499c0c508a209a7271b13cf2
+    fn: icu-LICENSE
 
 build:
   number: 0
@@ -68,8 +93,13 @@ build:
   # already"). bun's link emits no RPATH and every DT_NEEDED is a system
   # library (libc/ld-linux/libpthread/libdl/libm), so it is not needed.
   binary_relocation: false
+  # Passed under a neutral name and exported by build.sh / bld.bat: any
+  # upper-case "G I T _" token in this file makes conda-build treat the recipe
+  # as VCS-based and download every source just to render it.
   script_env:
-    - GIT_SHA={{ git_sha }}
+    - CONDA_BUN_REVISION={{ git_sha }}
+    - CONDA_WEBKIT_VERSION={{ webkit_version }}
+    - CONDA_WEBKIT_ASSET={{ webkit_asset }}
   # bun links its C++ runtime statically (conda-build reports these as unused
   # run deps), and icu is only in host for its headers: bun links the system
   # libicucore on macOS (scripts/build/bun.ts), never conda's ICU.
@@ -106,7 +136,7 @@ requirements:
   # The osx build needs ICU headers for the prebuilt WebKit headers (the worker
   # SDK is too old to ship them); the linux/windows prebuilts bundle their own.
   host:
-    - icu 78.3       # [osx]
+    - icu {{ icu }}  # [osx]
   run:
     # bun's --ci build uses a 13.0 deployment target, above the aggregate
     # c_stdlib_version, so the stdlib run_export alone is too permissive.
@@ -145,18 +175,47 @@ about:
   home: https://bun.sh
   dev_url: https://github.com/oven-sh/bun
   doc_url: https://bun.sh/docs
-  license: MIT
-  license_family: MIT
+  # bun is MIT but statically links LGPL JavaScriptCore/WebKit and tinycc plus
+  # the libraries listed in upstream LICENSE.md.
+  license: MIT AND LGPL-2.0-or-later AND LGPL-2.1-or-later AND Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND ISC AND Zlib AND IJG AND Unicode-3.0 AND (BSD-3-Clause OR GPL-2.0-only)
+  license_family: OTHER
   license_file:
     - LICENSE.md
-    - tinycc-LICENSE
-    - boringssl-LICENSE
-    - mimalloc-LICENSE
-    - picohttp-LICENSE-MIT
-    - simdutf-LICENSE-MIT
-    - simdutf-LICENSE-APACHE
     - packages/bun-usockets/LICENSE
     - packages/bun-uws/LICENSE
+    - src/clap/LICENSE
+    - picohttp-LICENSE-MIT
+    - webkit-JavaScriptCore-COPYING.LIB
+    - webkit-WebCore-LICENSE-LGPL-2
+    - webkit-WebCore-LICENSE-LGPL-2.1
+    - webkit-WebCore-LICENSE-APPLE
+    - simdutf-LICENSE
+    - icu-LICENSE
+    # Unpacked into vendor/ by scripts/build.ts at the pinned commits.
+    - vendor/boringssl/LICENSE
+    - vendor/brotli/LICENSE
+    - vendor/cares/LICENSE.md
+    - vendor/hdrhistogram/LICENSE.txt
+    - vendor/hdrhistogram/COPYING.txt
+    - vendor/highway/LICENSE
+    - vendor/libarchive/COPYING
+    - vendor/libdeflate/COPYING
+    - vendor/libjpeg-turbo/LICENSE.md
+    - vendor/libspng/LICENSE
+    - vendor/libuv/LICENSE  # [win]
+    - vendor/libwebp/COPYING
+    - vendor/lolhtml/LICENSE
+    - vendor/lshpack/LICENSE
+    - vendor/lsqpack/LICENSE
+    - vendor/lsquic/LICENSE
+    - vendor/lsquic/LICENSE.chrome
+    - vendor/mimalloc/LICENSE
+    - vendor/rust-argon2/LICENSE-MIT
+    - vendor/rust-argon2/LICENSE-APACHE
+    - vendor/tinycc/COPYING
+    - vendor/zlib/LICENSE.md
+    - vendor/zstd/LICENSE
+    - vendor/zstd/COPYING
   summary: Bun is a fast all-in-one JavaScript runtime
   description: |
     Bun is an all-in-one JavaScript runtime and toolkit distributed as a single

@@ -12,7 +12,19 @@ export PATH="$(dirname "${BUN_BOOTSTRAP}"):${PATH}"
 
 # The source tarball has no .git checkout; meta.yaml passes the release commit
 # via script_env. Fail loudly rather than silently building revision "unknown".
-: "${GIT_SHA:?GIT_SHA must be set by meta.yaml script_env}"
+export GIT_SHA="${CONDA_BUN_REVISION:?must be set by meta.yaml script_env}"
+
+# Serve the hash-pinned WebKit prebuilt (meta.yaml source) through bun's
+# read-only prefetch cache, keyed like scripts/build/download.ts:
+# by-url/<sha256(url)[:32]>. The version guard makes a bun bump without a
+# matching meta.yaml bump fail here, instead of silently downloading.
+grep -q "WEBKIT_VERSION = \"${CONDA_WEBKIT_VERSION}\"" scripts/build/deps/webkit.ts
+export WEBKIT_URL="https://github.com/oven-sh/WebKit/releases/download/autobuild-${CONDA_WEBKIT_VERSION}/${CONDA_WEBKIT_ASSET}.tar.gz"
+export BUN_BUILD_PREFETCH_DIR="${SRC_DIR}/.bun-prefetch"
+webkit_key="$(bun -e 'console.log(require("crypto").createHash("sha256").update(process.env.WEBKIT_URL).digest("hex").slice(0, 32))')"
+test "${#webkit_key}" -eq 32
+mkdir -p "${BUN_BUILD_PREFETCH_DIR}/by-url"
+mv "${SRC_DIR}/webkit-prebuilt/bun-webkit-prebuilt.bin" "${BUN_BUILD_PREFETCH_DIR}/by-url/${webkit_key}"
 
 # Use the conda LLVM/Rust toolchains instead of letting the build fetch its own.
 export BUN_TOOLCHAIN_LLVM="${BUILD_PREFIX}"
@@ -61,7 +73,9 @@ if [[ "${target_platform}" == osx-* ]]; then
   bun_args+=(--ci=true)
 fi
 
-bun scripts/build.ts "${bun_args[@]}"
+bun scripts/build.ts "${bun_args[@]}" 2>&1 | tee "${SRC_DIR}/bun-build.log"
+# Fail if WebKit came from the network rather than the pinned source.
+grep -qF "using prefetch cache: ${BUN_BUILD_PREFETCH_DIR}/by-url/${webkit_key}" "${SRC_DIR}/bun-build.log"
 
 mkdir -p "${PREFIX}/bin"
 cp build/release/bun "${PREFIX}/bin/bun"

@@ -11,10 +11,27 @@ for %%i in ("%BUN_BOOTSTRAP%") do set "PATH=%%~dpi;%PATH%"
 
 REM The source tarball has no .git checkout; meta.yaml passes the release
 REM commit via script_env.
-if not defined GIT_SHA (
-  echo GIT_SHA must be set by meta.yaml script_env
+if not defined CONDA_BUN_REVISION (
+  echo CONDA_BUN_REVISION must be set by meta.yaml script_env
   exit 1
 )
+set "GIT_SHA=%CONDA_BUN_REVISION%"
+
+REM Serve the hash-pinned WebKit prebuilt (meta.yaml source) through bun's
+REM read-only prefetch cache, keyed like scripts/build/download.ts; see build.sh.
+findstr /L /C:"WEBKIT_VERSION = \"%CONDA_WEBKIT_VERSION%\"" scripts\build\deps\webkit.ts >nul
+if errorlevel 1 (
+  echo WEBKIT_VERSION in scripts\build\deps\webkit.ts does not match meta.yaml
+  exit 1
+)
+set "WEBKIT_URL=https://github.com/oven-sh/WebKit/releases/download/autobuild-%CONDA_WEBKIT_VERSION%/%CONDA_WEBKIT_ASSET%.tar.gz"
+set "BUN_BUILD_PREFETCH_DIR=%SRC_DIR%\.bun-prefetch"
+set "WEBKIT_KEY="
+for /f "delims=" %%i in ('bun -e "console.log(require('crypto').createHash('sha256').update(process.env.WEBKIT_URL).digest('hex').slice(0, 32))"') do set "WEBKIT_KEY=%%i"
+if not defined WEBKIT_KEY exit 1
+if not exist "%BUN_BUILD_PREFETCH_DIR%\by-url" mkdir "%BUN_BUILD_PREFETCH_DIR%\by-url"
+move /Y "%SRC_DIR%\webkit-prebuilt\bun-webkit-prebuilt.bin" "%BUN_BUILD_PREFETCH_DIR%\by-url\%WEBKIT_KEY%"
+if errorlevel 1 exit 1
 
 REM Use the conda LLVM/Rust toolchains instead of letting the build fetch its own.
 REM On Windows conda installs these under Library\bin, not bin.
