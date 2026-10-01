@@ -39,6 +39,29 @@ test -f "$("${BUILD_PREFIX}/bin/rustc" --print sysroot)/lib/rustlib/src/rust/lib
 # at the canary channel. Upstream's release lanes pass --canary=off.
 bun_args=(--profile=release --canary=off)
 
+# brotli, zstd, libdeflate and libwebp come from the conda host prefix
+# (patch 0006) instead of vendor/. Their package versions feed process.versions.
+export CONDA_SYSTEM_DEPS_PREFIX="${PREFIX}"
+conda_pkg_version() {
+  local f
+  f="$(ls "${PREFIX}/conda-meta/$1-"[0-9]*.json | head -1)"
+  f="${f##*/$1-}"
+  echo "${f%%-*}"
+}
+export CONDA_SYSTEM_DEP_VERSION_BROTLI="$(conda_pkg_version libbrotlicommon)"
+export CONDA_SYSTEM_DEP_VERSION_ZSTD="$(conda_pkg_version zstd)"
+export CONDA_SYSTEM_DEP_VERSION_LIBDEFLATE="$(conda_pkg_version libdeflate)"
+export CONDA_SYSTEM_DEP_VERSION_LIBWEBP="$(conda_pkg_version libwebp-base)"
+
+# The shared ones (brotli, libdeflate, libwebp) are found at run time through
+# an RPATH set at link time; conda-build cannot add one (binary_relocation is
+# off, see meta.yaml). Clang config files apply it to bun's link, as on macOS.
+if [[ "${target_platform}" == linux-* ]]; then
+  for drv in clang clang++; do
+    echo '-Wl,-rpath,$ORIGIN/../lib' >> "${BUILD_PREFIX}/bin/${drv}.cfg"
+  done
+fi
+
 if [[ "${target_platform}" == osx-* ]]; then
   # bun drives clang itself and ignores the conda-injected CPPFLAGS, so expose
   # the host prefix's ICU headers through clang's implicit include path.
@@ -57,6 +80,8 @@ if [[ "${target_platform}" == osx-* ]]; then
   for drv in clang clang++; do
     {
       echo "-fuse-ld=lld"
+      # RPATH for the conda shared libraries (see above).
+      echo "-Wl,-rpath,@loader_path/../lib"
       for sym in \
         unumrf_closeResult unumrf_openResult unumrf_resultAsValue \
         unumrf_formatDoubleRange unumrf_formatDecimalRange unumrf_close \

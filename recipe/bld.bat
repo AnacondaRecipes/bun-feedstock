@@ -33,6 +33,19 @@ if not exist "%BUN_BUILD_PREFETCH_DIR%\by-url" mkdir "%BUN_BUILD_PREFETCH_DIR%\b
 move /Y "%SRC_DIR%\webkit-prebuilt\bun-webkit-prebuilt.bin" "%BUN_BUILD_PREFETCH_DIR%\by-url\%WEBKIT_KEY%"
 if errorlevel 1 exit 1
 
+REM brotli, zstd, libdeflate and libwebp come from the conda host prefix
+REM (patch 0006) instead of vendor\. Their package versions feed
+REM process.versions. The DLLs sit next to bun.exe in Library\bin.
+set "CONDA_SYSTEM_DEPS_PREFIX=%LIBRARY_PREFIX%"
+call :pkgversion libbrotlicommon CONDA_SYSTEM_DEP_VERSION_BROTLI
+if errorlevel 1 exit 1
+call :pkgversion zstd CONDA_SYSTEM_DEP_VERSION_ZSTD
+if errorlevel 1 exit 1
+call :pkgversion libdeflate CONDA_SYSTEM_DEP_VERSION_LIBDEFLATE
+if errorlevel 1 exit 1
+call :pkgversion libwebp-base CONDA_SYSTEM_DEP_VERSION_LIBWEBP
+if errorlevel 1 exit 1
+
 REM Use the conda LLVM/Rust toolchains instead of letting the build fetch its own.
 REM On Windows conda installs these under Library\bin, not bin.
 set BUN_TOOLCHAIN_LLVM=%BUILD_PREFIX%\Library
@@ -75,3 +88,17 @@ copy completions\bun.bash "%LIBRARY_PREFIX%\share\bash-completion\completions\bu
 if errorlevel 1 exit 1
 copy completions\bun.fish "%LIBRARY_PREFIX%\share\fish\vendor_completions.d\bun.fish"
 if errorlevel 1 exit 1
+exit /b 0
+
+REM %1 = conda package name, %2 = variable to receive its version, read from
+REM the host env's conda-meta\<name>-<version>-<build>.json.
+:pkgversion
+set "%2="
+set "_pkgfile="
+for /f "delims=" %%f in ('dir /b "%PREFIX%\conda-meta\%1-*.json" 2^>nul') do set "_pkgfile=%%~nf"
+if not defined _pkgfile exit /b 1
+call set "_pkgrest=%%_pkgfile:%1-=%%"
+for /f "tokens=1 delims=-" %%v in ("%_pkgrest%") do set "%2=%%v"
+set "_pkgfile="
+set "_pkgrest="
+exit /b 0
