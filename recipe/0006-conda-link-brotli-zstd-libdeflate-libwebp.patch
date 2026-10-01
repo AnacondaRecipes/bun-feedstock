@@ -1,0 +1,465 @@
+--- a/scripts/build/deps/brotli.ts
++++ b/scripts/build/deps/brotli.ts
+@@ -1,63 +1,14 @@
+ /**
+- * Brotli — high-ratio compression. Backs the `br` Content-Encoding in fetch
+- * and bun's --compress bundler flag.
+- *
+- * DirectBuild: one archive containing common + dec + enc. The cmake build
+- * splits these into three libs purely so dec-only consumers can avoid the
+- * encoder; we link everything anyway, so a single .a is simpler and drops
+- * the "common must come last" link-order footgun.
++ * Brotli — conda: linked from the conda host prefix (libbrotli{enc,dec,common}).
+  */
+ 
+-import type { Dependency, DirectBuild } from "../source.ts";
++import { condaSystemDep, sharedLib } from "./conda-system.ts";
+ 
+-// Upstream brotli pins releases by tag, not commit. A retag would change
+-// what we fetch — if that ever matters, resolve the tag to a sha and pin that.
+-const BROTLI_COMMIT = "v1.1.0";
+-
+-// prettier-ignore
+-const SOURCES = [
+-  "common/constants", "common/context", "common/dictionary", "common/platform",
+-  "common/shared_dictionary", "common/transform",
+-  "dec/bit_reader", "dec/decode", "dec/huffman", "dec/state",
+-  "enc/backward_references", "enc/backward_references_hq", "enc/bit_cost",
+-  "enc/block_splitter", "enc/brotli_bit_stream", "enc/cluster", "enc/command",
+-  "enc/compound_dictionary", "enc/compress_fragment", "enc/compress_fragment_two_pass",
+-  "enc/dictionary_hash", "enc/encode", "enc/encoder_dict", "enc/entropy_encode",
+-  "enc/fast_log", "enc/histogram", "enc/literal_cost", "enc/memory",
+-  "enc/metablock", "enc/static_dict", "enc/utf8_util",
+-];
+-
+-export const brotli: Dependency = {
++export const brotli = condaSystemDep({
+   name: "brotli",
+-
+-  source: () => ({
+-    kind: "github-archive",
+-    repo: "google/brotli",
+-    commit: BROTLI_COMMIT,
+-  }),
+-
+-  build: cfg => {
+-    const spec: DirectBuild = {
+-      kind: "direct",
+-      sources: SOURCES.map(s => `c/${s}.c`),
+-      includes: ["c/include"],
+-      // log2 exists everywhere we target; the cmake check only exists for
+-      // ancient bionic. OS_* selects the <endian.h> include in platform.h;
+-      // Windows is detected via _WIN32 directly so needs no define here.
+-      defines: {
+-        BROTLI_HAVE_LOG2: 1,
+-        ...(cfg.linux && { OS_LINUX: true }),
+-        ...(cfg.darwin && { OS_MACOSX: true }),
+-        ...(cfg.freebsd && { OS_FREEBSD: true }),
+-      },
+-      pic: true,
+-    };
+-
+-    return spec;
+-  },
+-
+-  provides: () => ({
+-    libs: [],
+-    includes: ["c/include"],
+-  }),
+-};
++  libs: cfg => [
++    sharedLib(cfg, "brotlienc", "brotlienc"),
++    sharedLib(cfg, "brotlidec", "brotlidec"),
++    sharedLib(cfg, "brotlicommon", "brotlicommon"),
++  ],
++});
+--- a/scripts/build/deps/conda-system.ts
++++ b/scripts/build/deps/conda-system.ts
+@@ -0,0 +1,42 @@
++/**
++ * conda: link a dependency from the conda host prefix instead of building the
++ * vendored copy. The prefix (CONDA_SYSTEM_DEPS_PREFIX: $PREFIX, or
++ * %LIBRARY_PREFIX% on Windows) is the dep's "local" source dir, so
++ * `includes`/`libs` are relative to it. `identity` (CONDA_SYSTEM_DEP_VERSION_*)
++ * feeds bun_dependency_versions.h, which process.versions reads.
++ */
++
++import type { Config } from "../config.ts";
++import type { Dependency } from "../source.ts";
++
++function prefix(): string {
++  const p = process.env.CONDA_SYSTEM_DEPS_PREFIX;
++  if (!p) throw new Error("CONDA_SYSTEM_DEPS_PREFIX must point at the conda host prefix");
++  return p;
++}
++
++/** Shared library: lib<name>.so / lib<name>.dylib, or the <win>.lib import library. */
++export function sharedLib(cfg: Config, name: string, win: string): string {
++  if (cfg.windows) return `lib/${win}.lib`;
++  return cfg.darwin ? `lib/lib${name}.dylib` : `lib/lib${name}.so`;
++}
++
++export function condaSystemDep(opts: {
++  name: string;
++  versionMacro?: string;
++  libs: (cfg: Config) => string[];
++}): Dependency {
++  const key = opts.name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
++  return {
++    name: opts.name,
++    versionMacro: opts.versionMacro,
++    source: () => ({
++      kind: "local",
++      path: prefix(),
++      identity: process.env[`CONDA_SYSTEM_DEP_VERSION_${key}`] ?? "conda",
++      hint: "CONDA_SYSTEM_DEPS_PREFIX does not exist",
++    }),
++    build: () => ({ kind: "none" }),
++    provides: cfg => ({ libs: opts.libs(cfg), includes: ["include"] }),
++  };
++}
+--- a/scripts/build/deps/libdeflate.ts
++++ b/scripts/build/deps/libdeflate.ts
+@@ -1,48 +1,11 @@
+ /**
+- * libdeflate — fast deflate/gzip/zlib codec. Faster than zlib for one-shot
+- * compression (no streaming). Used by Blob.gzip() and bun's .gz asset loader.
+- *
+- * DirectBuild: 11 .c files, no config.h, no codegen. The arm/x86 cpu_features
+- * sources both compile on every target — they self-guard with #ifdef and the
+- * inactive one becomes an empty TU.
++ * libdeflate — conda: linked from the conda host prefix.
+  */
+ 
+-import type { Dependency } from "../source.ts";
++import { condaSystemDep, sharedLib } from "./conda-system.ts";
+ 
+-const LIBDEFLATE_COMMIT = "c8c56a20f8f621e6a966b716b31f1dedab6a41e3";
+-
+-export const libdeflate: Dependency = {
++export const libdeflate = condaSystemDep({
+   name: "libdeflate",
+   versionMacro: "LIBDEFLATE_HASH",
+-
+-  source: () => ({
+-    kind: "github-archive",
+-    repo: "ebiggers/libdeflate",
+-    commit: LIBDEFLATE_COMMIT,
+-  }),
+-
+-  build: () => ({
+-    kind: "direct",
+-    sources: [
+-      "lib/utils.c",
+-      "lib/arm/cpu_features.c",
+-      "lib/x86/cpu_features.c",
+-      "lib/deflate_compress.c",
+-      "lib/deflate_decompress.c",
+-      "lib/adler32.c",
+-      "lib/zlib_compress.c",
+-      "lib/zlib_decompress.c",
+-      "lib/crc32.c",
+-      "lib/gzip_compress.c",
+-      "lib/gzip_decompress.c",
+-    ],
+-    // libdeflate.h + common_defs.h live at the repo root; sources reach
+-    // lib/*.h by relative include from their own directory.
+-    includes: ["."],
+-  }),
+-
+-  provides: () => ({
+-    libs: [],
+-    includes: ["."],
+-  }),
+-};
++  libs: cfg => [sharedLib(cfg, "deflate", "deflate")],
++});
+--- a/scripts/build/deps/libwebp.ts
++++ b/scripts/build/deps/libwebp.ts
+@@ -1,143 +1,15 @@
+ /**
+- * libwebp — Google's reference WebP codec. Backs Bun.Image WebP
+- * decode/encode plus the SharpYUV RGB→YUV converter the encoder prefers.
+- *
+- * mux/demux are the RIFF-container helpers: demux reads VP8X chunks (ICCP,
+- * EXIF, XMP) out of an input WebP without touching the bitstream; mux
+- * wraps a raw VP8/VP8L encode in a VP8X container so those chunks can be
+- * attached on output. Only the ICCP chunk is used today (ICC profile
+- * carry-through for #30197), but the full mux/demux is linked since the
+- * TUs are tiny and the EXIF/XMP chunks will need the same plumbing later.
+- *
+- * DirectBuild: no config.h, no codegen. Every dsp/*_{sse2,sse41,neon,msa,
+- * mips}*.c file self-guards on WEBP_USE_<ISA> (derived from compiler arch
+- * macros in src/dsp/cpu.h), so the off-target ones compile to empty TUs —
+- * same pattern as libdeflate's arm/x86 cpu_features split. We list them all
+- * and let the preprocessor prune.
+- *
+- * Threading: WEBP_USE_THREAD is left OFF. The decoder/encoder are invoked
+- * from Bun's worker pool already; libwebp's internal pthread pool would just
+- * oversubscribe.
++ * libwebp — conda: linked from the conda host prefix (libwebp-base). bun uses
++ * the decode/encode API plus demux/mux for animated WebP.
+  */
+ 
+-import type { Dependency } from "../source.ts";
++import { condaSystemDep, sharedLib } from "./conda-system.ts";
+ 
+-const LIBWEBP_COMMIT = "b7e29b9d75bd31422b00c2a446d49d7af06c328d"; // v1.6.0
+-
+-// prettier-ignore
+-const DEC = [
+-  "alpha_dec", "buffer_dec", "frame_dec", "idec_dec", "io_dec",
+-  "quant_dec", "tree_dec", "vp8_dec", "vp8l_dec", "webp_dec",
+-];
+-
+-// prettier-ignore
+-const ENC = [
+-  "alpha_enc", "analysis_enc", "backward_references_cost_enc",
+-  "backward_references_enc", "config_enc", "cost_enc", "filter_enc",
+-  "frame_enc", "histogram_enc", "iterator_enc", "near_lossless_enc",
+-  "picture_enc", "picture_csp_enc", "picture_psnr_enc",
+-  "picture_rescale_enc", "picture_tools_enc", "predictor_enc",
+-  "quant_enc", "syntax_enc", "token_enc", "tree_enc", "vp8l_enc",
+-  "webp_enc",
+-];
+-
+-// prettier-ignore
+-const DSP = [
+-  "alpha_processing", "alpha_processing_mips_dsp_r2",
+-  "alpha_processing_neon", "alpha_processing_sse2", "alpha_processing_sse41",
+-  "cost", "cost_mips32", "cost_mips_dsp_r2", "cost_neon", "cost_sse2",
+-  "cpu",
+-  "dec", "dec_clip_tables", "dec_mips32", "dec_mips_dsp_r2", "dec_msa",
+-  "dec_neon", "dec_sse2", "dec_sse41",
+-  "enc", "enc_mips32", "enc_mips_dsp_r2", "enc_msa", "enc_neon",
+-  "enc_sse2", "enc_sse41",
+-  "filters", "filters_mips_dsp_r2", "filters_msa", "filters_neon",
+-  "filters_sse2",
+-  "lossless", "lossless_avx2", "lossless_enc", "lossless_enc_avx2",
+-  "lossless_enc_mips32",
+-  "lossless_enc_mips_dsp_r2", "lossless_enc_msa", "lossless_enc_neon",
+-  "lossless_enc_sse2", "lossless_enc_sse41", "lossless_mips_dsp_r2",
+-  "lossless_msa", "lossless_neon", "lossless_sse2", "lossless_sse41",
+-  "rescaler", "rescaler_mips32", "rescaler_mips_dsp_r2", "rescaler_msa",
+-  "rescaler_neon", "rescaler_sse2",
+-  "ssim", "ssim_sse2",
+-  "upsampling", "upsampling_mips_dsp_r2", "upsampling_msa",
+-  "upsampling_neon", "upsampling_sse2", "upsampling_sse41",
+-  "yuv", "yuv_mips32", "yuv_mips_dsp_r2", "yuv_neon", "yuv_sse2",
+-  "yuv_sse41",
+-];
+-
+-// prettier-ignore
+-const UTILS = [
+-  "bit_reader_utils", "bit_writer_utils", "color_cache_utils",
+-  "filters_utils", "huffman_encode_utils", "huffman_utils", "palette",
+-  "quant_levels_dec_utils", "quant_levels_utils", "random_utils",
+-  "rescaler_utils", "thread_utils", "utils",
+-];
+-
+-// RIFF container read/write — extracts/attaches the ICCP chunk so a
+-// non-sRGB source (Display P3, Adobe RGB, Jpegli XYB) keeps its colour
+-// meaning through a WebP re-encode. `anim_decode.c`/`anim_encode.c`
+-// (WebPAnimDecoder/WebPAnimEncoder) are omitted: they layer ON TOP of
+-// demux/mux, not the reverse, and Bun has no animated-WebP support.
+-const DEMUX = ["demux"];
+-const MUX = ["muxedit", "muxinternal", "muxread"];
+-
+-// prettier-ignore
+-const SHARPYUV = [
+-  "sharpyuv", "sharpyuv_cpu", "sharpyuv_csp", "sharpyuv_dsp",
+-  "sharpyuv_gamma", "sharpyuv_neon", "sharpyuv_sse2",
+-];
+-
+-// dsp/*_{sse2,sse41,avx2}.c each compile a single ISA variant. libwebp's
+-// cpu.h gates them on `__SSE2__`/`__SSE4_1__`/`__AVX2__` *or* `_MSC_VER &&
+-// _M_X64` — real MSVC accepts AVX2 intrinsics without /arch, but clang-cl
+-// defines _MSC_VER and still requires `-mavx2`, so the file builds on Linux
+-// baseline (gate stays off) and explodes on Windows baseline (gate forced on,
+-// no ISA). Match upstream cmake/cpu.cmake: pass the ISA flag per-file on x64
+-// (on arm64 these compile to the stub body and the x86 -m flags are invalid).
+-// Runtime CPU dispatch in dsp/cpu.c picks the best available, so a baseline
+-// binary still runs on pre-AVX2 hardware.
+-function simd(path: string, x64: boolean) {
+-  if (x64) {
+-    for (const [suf, flag] of [
+-      ["_avx2.c", "-mavx2"],
+-      ["_sse41.c", "-msse4.1"],
+-      ["_sse2.c", "-msse2"],
+-    ] as const) {
+-      if (path.endsWith(suf)) return { path, cflags: [flag] };
+-    }
+-  }
+-  return path;
+-}
+-
+-export const libwebp: Dependency = {
++export const libwebp = condaSystemDep({
+   name: "libwebp",
+-
+-  source: () => ({
+-    kind: "github-archive",
+-    repo: "webmproject/libwebp",
+-    commit: LIBWEBP_COMMIT,
+-  }),
+-
+-  build: cfg => ({
+-    kind: "direct",
+-    sources: [
+-      ...DEC.map(f => `src/dec/${f}.c`),
+-      ...ENC.map(f => `src/enc/${f}.c`),
+-      ...DSP.map(f => simd(`src/dsp/${f}.c`, cfg.x64)),
+-      ...UTILS.map(f => `src/utils/${f}.c`),
+-      ...DEMUX.map(f => `src/demux/${f}.c`),
+-      ...MUX.map(f => `src/mux/${f}.c`),
+-      ...SHARPYUV.map(f => simd(`sharpyuv/${f}.c`, cfg.x64)),
+-    ],
+-    // src/webp/*.h is the public API; internal headers use "src/..."
+-    // includes from the repo root, sharpyuv uses "sharpyuv/...".
+-    includes: [".", "src"],
+-  }),
+-
+-  provides: () => ({
+-    libs: [],
+-    includes: ["src"],
+-  }),
+-};
++  libs: cfg => [
++    sharedLib(cfg, "webpdemux", "libwebpdemux"),
++    sharedLib(cfg, "webpmux", "libwebpmux"),
++    sharedLib(cfg, "webp", "libwebp"),
++  ],
++});
+--- a/scripts/build/deps/zstd.ts
++++ b/scripts/build/deps/zstd.ts
+@@ -1,86 +1,14 @@
+ /**
+- * Zstandard — fast compression with a good ratio/speed tradeoff. Backs
+- * bun's install cache and the `zstd` Content-Encoding in fetch.
+- *
+- * DirectBuild: globbed common/compress/decompress/dictBuilder. Legacy-format
+- * decoders (zstd v0.5-v0.7, pre-1.0) are NOT built — Bun never reads
+- * pre-1.0 frames (install cache, fetch Content-Encoding, and Bun.zstd all
+- * use the current format). The amd64
+- * Huffman kernel ships as a .S file that clang assembles directly; on other
+- * targets ZSTD_DISABLE_ASM falls through to the C implementation.
++ * Zstandard — conda: linked from the conda host prefix. Static archive on
++ * unix (keeps `bun build --compile` output free of a libzstd dependency);
++ * on Windows the static lib is built against the DLL CRT (/MD) while bun
++ * uses /MT, so link the import library instead.
+  */
+ 
+-import type { Dependency, DirectBuild } from "../source.ts";
++import { condaSystemDep } from "./conda-system.ts";
+ 
+-const ZSTD_COMMIT = "f8745da6ff1ad1e7bab384bd1f9d742439278e99";
+-
+-// prettier-ignore
+-const SOURCES = [
+-  "common/debug", "common/entropy_common", "common/error_private",
+-  "common/fse_decompress", "common/pool", "common/threading", "common/xxhash",
+-  "common/zstd_common",
+-  "compress/fse_compress", "compress/hist", "compress/huf_compress",
+-  "compress/zstd_compress", "compress/zstd_compress_literals",
+-  "compress/zstd_compress_sequences", "compress/zstd_compress_superblock",
+-  "compress/zstd_double_fast", "compress/zstd_fast", "compress/zstd_lazy",
+-  "compress/zstd_ldm", "compress/zstd_opt", "compress/zstd_preSplit",
+-  "compress/zstdmt_compress",
+-  "decompress/huf_decompress", "decompress/zstd_ddict",
+-  "decompress/zstd_decompress", "decompress/zstd_decompress_block",
+-  "dictBuilder/cover", "dictBuilder/divsufsort", "dictBuilder/fastcover",
+-  "dictBuilder/zdict",
+-].map(s => `lib/${s}.c`);
+-
+-export const zstd: Dependency = {
++export const zstd = condaSystemDep({
+   name: "zstd",
+   versionMacro: "ZSTD_HASH",
+-
+-  source: () => ({
+-    kind: "github-archive",
+-    repo: "facebook/zstd",
+-    commit: ZSTD_COMMIT,
+-  }),
+-
+-  build: cfg => {
+-    const sources = [...SOURCES];
+-    const defines: Record<string, number | true> = {
+-      ZSTD_MULTITHREAD: true,
+-      ZSTD_LEGACY_SUPPORT: 0,
+-    };
+-
+-    // Upstream's if(MSVC) block sets these for the static target.
+-    // ZSTD_HEAPMODE=0 makes the one-shot ZSTD_decompress() (used by
+-    // src/zstd/lib.rs) stack-allocate its DCtx instead of malloc/free
+-    // per call; the source default is 1.
+-    if (cfg.windows) {
+-      defines.ZSTD_HEAPMODE = 0;
+-      defines._CRT_SECURE_NO_WARNINGS = true;
+-    }
+-
+-    // huf_decompress_amd64.S is GNU-as syntax. clang assembles it on
+-    // posix x64; clang-cl can't, so Windows takes the C path.
+-    if (cfg.x64 && !cfg.windows) {
+-      sources.push("lib/decompress/huf_decompress_amd64.S");
+-    } else {
+-      defines.ZSTD_DISABLE_ASM = 1;
+-    }
+-
+-    const spec: DirectBuild = {
+-      kind: "direct",
+-      sources,
+-      defines,
+-      includes: ["lib", "lib/common"],
+-      pic: true,
+-      // XXH_NAMESPACE must be a bare token prefix (xxhash pastes it onto
+-      // symbol names), not a string literal — DirectBuild.defines would
+-      // wrap it in quotes. Avoids clashes with lshpack/libarchive's copies.
+-      cflags: ["-DXXH_NAMESPACE=ZSTD_"],
+-    };
+-    return spec;
+-  },
+-
+-  provides: () => ({
+-    libs: [],
+-    includes: ["lib"],
+-  }),
+-};
++  libs: cfg => [cfg.windows ? "lib/zstd.lib" : "lib/libzstd.a"],
++});
+--- a/scripts/build/depVersionsHeader.ts
++++ b/scripts/build/depVersionsHeader.ts
+@@ -31,6 +31,8 @@
+     case "prebuilt":
+       return source.identity;
+     case "local":
++      // conda: system (conda-prefix) deps carry their package version.
++      return source.identity;
+     case "in-tree":
+       // User-managed / in-tree — no pinned identifier independent of the
+       // bun commit. Callers that need a value use cfg.revision.
+--- a/scripts/build/source.ts
++++ b/scripts/build/source.ts
+@@ -107,6 +107,11 @@
+       path?: string;
+       /** Custom hint for the "source not found" error. */
+       hint?: string;
++      /**
++       * conda: version string for bun_dependency_versions.h when the
++       * "source" is a system (conda) prefix rather than a checkout.
++       */
++      identity?: string;
+     }
+   | {
+       /**
+@@ -923,7 +928,9 @@
+     // No build step. The fetch stamp (if any) is the only output. For deps
+     // with provides.sources (picohttpparser), emitBun adds a phony pointing
+     // at the compiled .o files so `--target <name>` actually compiles them.
+-    libs = [];
++    // conda: a no-build dep may name prebuilt libraries (e.g. from the conda
++    // prefix); relative paths resolve against the source dir.
++    libs = provides.libs.map(lib => (isAbsolute(lib) ? lib : resolve(srcDir, lib)));
+     outputs = sourceStamp === undefined ? [] : [sourceStamp];
+   }
+ 

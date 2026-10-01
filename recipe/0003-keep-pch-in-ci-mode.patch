@@ -1,0 +1,15 @@
+--- a/scripts/build/bun.ts
++++ b/scripts/build/bun.ts
+@@ -278,7 +278,11 @@
+ 
+   // ─── Step 4: PCH ───
+   // CI full mode (unused by the pipeline) skips the PCH; cpp-only/archive-link use it.
+-  const usePch = !cfg.ci || cfg.mode !== "full";
++  // conda: keep the PCH even in CI mode. We build with --ci so the macOS
++  // deployment target is floored at 13.0 (the worker SDK is older), but CI
++  // mode would otherwise drop the PCH — and without it several headers no
++  // longer see the JSC/WebKit includes the PCH provides.
++  const usePch = true;
+   let pchOut: { pch: string; wrapperHeader: string } | undefined;
+ 
+   if (usePch) {
