@@ -135,6 +135,9 @@ requirements:
     - rust-src-nightly {{ rust_nightly_compiler_version }}
   # The osx build needs ICU headers for the prebuilt WebKit headers (the worker
   # SDK is too old to ship them); the linux/windows prebuilts bundle their own.
+  # vendor/ deps stay vendored: most are bun forks/patched or not on main, and the clean ones
+  # (brotli, libdeflate, libwebp) are shared-only on main, which would tie `bun build --compile` output to conda libs.
+  # Re-check on each bun update (new static libs on main, upstream dep patches); see bun-feedstock#1.
   host:
     - icu {{ icu }}  # [osx]
   run:
