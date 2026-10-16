@@ -84,7 +84,15 @@ source:
     fn: icu-LICENSE
 
 build:
-  number: 0
+  number: 1
+  # `bun build --compile` copies this bun executable into its output, so the
+  # OS floor bun needs at run time is also a run requirement of anything
+  # compiled with it (e.g. kilo). Strong, so it applies when bun is only in
+  # the consumer's build env. Nothing on Windows: the C runtime is static.
+  run_exports:  # [unix]
+    strong:  # [unix]
+      - __osx >=13.0                      # [osx]
+      - __glibc >={{ c_stdlib_version }}  # [linux]
   # conda-build's rpath step (patchelf --force-rpath --set-rpath $ORIGIN/../lib)
   # appends a PT_LOAD to this 75 MB binary whose page range overlaps the next
   # segment's first page, giving an ELF the kernel refuses to map -- the linux
@@ -102,8 +110,11 @@ build:
     - CONDA_WEBKIT_ASSET={{ webkit_asset }}
   # bun links its C++ runtime statically (conda-build reports these as unused
   # run deps), and icu is only in host for its headers: bun links the system
-  # libicucore on macOS (scripts/build/bun.ts), never conda's ICU.
+  # libicucore on macOS (scripts/build/bun.ts), never conda's ICU. libgcc comes
+  # from the toolchain's strong run_exports, but libatomic is linked statically
+  # (gcc_impl's libatomic.a) and bun never loads libgcc_s.
   ignore_run_exports:
+    - libgcc        # [linux]
     - libstdcxx     # [linux]
     - libcxx        # [osx]
     - icu           # [osx]
