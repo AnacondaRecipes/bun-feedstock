@@ -1,1 +1,5 @@
 render_workers: 1
+# TEMPORARY: rust-nightly / rust-src-nightly 1.100.0_2026_09_15 from the
+# AnacondaRecipes/rust-feedstock#40 PBP graph. Remove once released to pkgs/main.
+channels:
+  - https://package-build.anaconda.com/pkg-orchestrator/v1/channels/graphs/c5215ed6-9d5c-4c5c-b207-4c919270a228
