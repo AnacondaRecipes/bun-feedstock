@@ -44,7 +44,7 @@ if [[ "${target_platform}" == osx-* ]]; then
   # the host prefix's ICU headers through clang's implicit include path.
   export CPATH="${PREFIX}/include${CPATH:+:${CPATH}}"
 
-  # conda's clang passes `-lto_library <prefix>/lib/libLTO.21.1.dylib` to the
+  # conda's clang passes `-lto_library <prefix>/lib/libLTO.<ver>.dylib` to the
   # linker, and Apple's ld rejects that basename ("library filename must be
   # 'libLTO.dylib'"). Link with ld64.lld instead, via clang config files: clang
   # reads <driver>.cfg next to its binary, and options from a config file do

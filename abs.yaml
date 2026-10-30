@@ -1,1 +1,5 @@
 render_workers: 1
+# TEMPORARY: rust-nightly / rust-src-nightly 1.100.0_2026_09_15 from
+# AnacondaRecipes/rust-feedstock#40. Remove once released to pkgs/main.
+channels:
+  - https://staging.continuum.io/pbp/fs/rust-feedstock/pr40/ec9dc1d

@@ -1,14 +1,16 @@
 {% set name = "bun" %}
-{% set version = "1.4.2" %}
+{% set version = "1.4.4" %}
 # Commit the bun-v{{ version }} tag points at; the source tarball has no .git,
 # so build.sh hands it to scripts/build.ts as the revision.
-{% set git_sha = "744846f844374847c902b5e7fd59b4342a51ef99" %}
+{% set git_sha = "38afee6c84fcf48c0edb2466aa4b27d287a59c30" %}
 # WEBKIT_VERSION in scripts/build/deps/webkit.ts (build.sh checks they match).
-{% set webkit_version = "2e2aa2290fac856d6f451ceacb58f7f5b44dd057" %}
-{% set webkit_asset = "bun-webkit-linux-amd64" %}  # [linux and x86_64]
-{% set webkit_asset = "bun-webkit-linux-arm64" %}  # [linux and aarch64]
-{% set webkit_asset = "bun-webkit-macos-arm64" %}  # [osx and arm64]
-{% set webkit_asset = "bun-webkit-windows-amd64" %}  # [win]
+{% set webkit_version = "d6375c72affe0f70222cdcb45012b10f0bf3a9d5" %}
+# Release builds are ThinLTO by default since 1.4.3 (scripts/build/config.ts),
+# which selects the -lto prebuilt (deps/webkit.ts prebuiltSuffix).
+{% set webkit_asset = "bun-webkit-linux-amd64-lto" %}  # [linux and x86_64]
+{% set webkit_asset = "bun-webkit-linux-arm64-lto" %}  # [linux and aarch64]
+{% set webkit_asset = "bun-webkit-macos-arm64-lto" %}  # [osx and arm64]
+{% set webkit_asset = "bun-webkit-windows-amd64-lto" %}  # [win]
 
 package:
   name: {{ name }}
@@ -16,11 +18,8 @@ package:
 
 source:
   - url: https://github.com/oven-sh/bun/archive/refs/tags/bun-v{{ version }}.tar.gz
-    sha256: e14670b117d69012d828514d657f0a3133d1c25d13d69461184d05b6a8e9a876
+    sha256: 00ce37fa5ac393a7d225bcf847365982fceb818b56a19b6884fefd67918468ff
     patches:
-      # We build with --ci on macOS (see build.sh) and upstream's CI "full" mode
-      # skips the precompiled header, which several JSC/WebKit headers rely on.
-      - 0003-keep-pch-in-ci-mode.patch
       # macOS links go through ld64.lld (see build.sh): apply upstream's
       # ld64.lld link fixups (cross-link only upstream) to native links too, and
       # drop Apple's -ld_new. Without them `bun build --compile` fails with
@@ -32,19 +31,19 @@ source:
   # a selector on only the url line leaves the sha256/folder lines behind and
   # they attach to the neighbouring entry.
   - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-linux-x64-baseline.zip  # [linux and x86_64]
-    sha256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f  # [linux and x86_64]
+    sha256: e0446eb55995772eb9894bebae9a6be368d985a8b9271ee124486f9946eedd76  # [linux and x86_64]
     folder: bun.native  # [linux and x86_64]
   - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-linux-aarch64.zip  # [linux and aarch64]
-    sha256: 54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7  # [linux and aarch64]
+    sha256: baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e  # [linux and aarch64]
     folder: bun.native  # [linux and aarch64]
   - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-darwin-x64.zip  # [osx and x86_64]
-    sha256: 80520d7e17526308c9185d261679ac6d27798d3803a0e9f7ff9121ab8affb012  # [osx and x86_64]
+    sha256: 50a3491f73abc2fe81673171a85762d3bc2cc1680ccecadd983de99adf77977e  # [osx and x86_64]
     folder: bun.native  # [osx and x86_64]
   - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-darwin-aarch64.zip  # [osx and arm64]
-    sha256: 90987a3a16d7db556d886ac3d551e7b6d3edf0a1cf43acaed622e8676be1d12f  # [osx and arm64]
+    sha256: c240d7f0ccb90c263a849fcdb09b7ee62630d921348ed6aafda86b9d577bc510  # [osx and arm64]
     folder: bun.native  # [osx and arm64]
   - url: https://github.com/oven-sh/bun/releases/download/bun-v{{ version }}/bun-windows-x64.zip  # [win]
-    sha256: ce4c17497b2f29712a99d3d53f028de28cd42e3bacb8589599e7f000e49b6405  # [win]
+    sha256: cd2c0fccc78f3ede1f50ca827a15f063eda13d4d150a3d0674f4f6e323d864a5  # [win]
     folder: bun.native  # [win]
 
   # oven-sh/WebKit prebuilt JavaScriptCore/WebKit: upstream's default
@@ -53,10 +52,10 @@ source:
   # pinned here and build.sh serves it via BUN_BUILD_PREFETCH_DIR. The .bin
   # name stops conda-build from extracting it.
   - url: https://github.com/oven-sh/WebKit/releases/download/autobuild-{{ webkit_version }}/{{ webkit_asset }}.tar.gz
-    sha256: 2c614235705e1c30048125671e2cdaa93849ea3bf4e0b9a904e3c7368312af0a  # [linux and x86_64]
-    sha256: 35adf76b39487bbc07c162d79f79ffd18801e5d7937f0df72d24db8dc2043b6e  # [linux and aarch64]
-    sha256: 348d4b9a97d2a17e997e9b09d084761e88748dd20586b15317f717299de70ab2  # [osx and arm64]
-    sha256: 692315885cf2d1e426da22ff031c6ade9c4a8e1be989ff7f70e0cb7390c53b17  # [win]
+    sha256: f6d7bfd584b76a85f5febee91a09597bf90861c5a8fef78a5dd83877e3089fe9  # [linux and x86_64]
+    sha256: 78d840c6afda98bebf6036f53f3227a7149514206bfdb60f384fb85a2e8dd212  # [linux and aarch64]
+    sha256: 31232adef2317e1d1352efce287879850552cb3075a4cb5914313e3573d96a6e  # [osx and arm64]
+    sha256: 0fec831e1a86009b0c6a2948d51293df8519921b3ccf397fbd218f51f8e6f148  # [win]
     fn: bun-webkit-prebuilt.bin
     folder: webkit-prebuilt
 
@@ -79,12 +78,12 @@ source:
   - url: https://raw.githubusercontent.com/oven-sh/WebKit/{{ webkit_version }}/Source/WTF/wtf/simdutf/LICENSE-simdutf.txt
     sha256: fc8dbc04e03ad4efc08a647ffe7f995b811a95bc04c0e85a56d5277c6593fa5f
     fn: simdutf-LICENSE
-  - url: https://raw.githubusercontent.com/unicode-org/icu/release-78.1/icu4c/LICENSE
+  - url: https://raw.githubusercontent.com/unicode-org/icu/release-78.3/icu4c/LICENSE
     sha256: 1e881ecf2862d01e6e5bc2b861e46886d2a6fb01499c0c508a209a7271b13cf2
     fn: icu-LICENSE
 
 build:
-  number: 1
+  number: 0
   # `bun build --compile` copies this bun executable into its output, so the
   # OS floor bun needs at run time is also a run requirement of anything
   # compiled with it (e.g. kilo). Strong, so it applies when bun is only in
@@ -125,12 +124,13 @@ requirements:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
     - {{ stdlib('c') }}
-    # bun requires LLVM 21 (upstream CONTRIBUTING); pin the three so the
-    # compiler, linker and binutils cannot resolve to different majors.
-    # No selector: windows needs clang-cl/lld-link/llvm-rc here too.
-    - clang 21.1.8
-    - lld 21.1.8
-    - llvm-tools 21.1.8
+    # bun requires LLVM 23.1.x (upstream CONTRIBUTING, enforced by
+    # scripts/build/tools.ts); pin the three so the compiler, linker and
+    # binutils cannot resolve to different majors. rustc's LLVM must be the
+    # same major (config.ts). No selector: windows needs clang-cl/lld-link too.
+    - clang 23.1.4
+    - lld 23.1.4
+    - llvm-tools 23.1.4
     - cmake
     - git        # vendored-dep patches are applied with `git apply`
     - nasm       # boringssl / libjpeg-turbo assembly
@@ -168,10 +168,10 @@ test:
     - bun --version
     - bun --help
     - bunx --version
-    # Release build, not canary: `1.4.2+<sha>`, never `1.4.2-canary.N+<sha>`.
+    # Release build, not canary: `1.4.4+<sha>`, never `1.4.4-canary.N+<sha>`.
     - bun --revision | grep -Fx "{{ version }}+{{ git_sha[:9] }}"    # [unix]
     # findstr /X misses whole-line matches on piped input; a literal substring
-    # still rejects canary ("1.4.2-canary.1+<sha>" does not contain "1.4.2+<sha>").
+    # still rejects canary ("1.4.4-canary.1+<sha>" does not contain "1.4.4+<sha>").
     - bun --revision | findstr /L /C:"{{ version }}+{{ git_sha[:9] }}"  # [win]
     # Exercise the JS engine, and on macOS the system-ICU symbols that
     # build.sh defers to load time.
