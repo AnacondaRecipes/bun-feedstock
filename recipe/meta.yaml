@@ -25,6 +25,10 @@ source:
       # drop Apple's -ld_new. Without them `bun build --compile` fails with
       # OverlappingSegments and the binary keeps an 8 MB (not 18 MB) stack.
       - 0005-darwin-link-with-ld64-lld.patch
+      # Build with ninja-base from PATH: 1.4.4's ensureNinja() otherwise
+      # downloads the oven-sh/ninja fork at configure time (osx/win succeed,
+      # linux falls back). Stock ninja builds the same graph.
+      - 0006-use-ninja-from-path.patch
 
   # Prebuilt bun, used only to bootstrap scripts/build.ts (the source tarball
   # ships no binary). The selector is repeated on every line of each entry:
@@ -78,8 +82,10 @@ source:
   - url: https://raw.githubusercontent.com/oven-sh/WebKit/{{ webkit_version }}/Source/WTF/wtf/simdutf/LICENSE-simdutf.txt
     sha256: fc8dbc04e03ad4efc08a647ffe7f995b811a95bc04c0e85a56d5277c6593fa5f
     fn: simdutf-LICENSE
-  - url: https://raw.githubusercontent.com/unicode-org/icu/release-78.3/icu4c/LICENSE
-    sha256: 1e881ecf2862d01e6e5bc2b861e46886d2a6fb01499c0c508a209a7271b13cf2
+  # Top-level LICENSE: icu4c/LICENSE is a symlink to it, which raw.githubusercontent
+  # serves as the 10-byte string "../LICENSE".
+  - url: https://raw.githubusercontent.com/unicode-org/icu/release-78.3/LICENSE
+    sha256: e55522d81edc687a341a4411e0776e54ca654e90147f354a90458aaced4116af
     fn: icu-LICENSE
 
 build:

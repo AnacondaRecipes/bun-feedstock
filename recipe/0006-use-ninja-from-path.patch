@@ -1,0 +1,39 @@
+From caaa78e4f8dd33eda7f12f4a3271d095336ab5bf Mon Sep 17 00:00:00 2001
+From: Jamie Robertson <jrobertson@anaconda.com>
+Date: Thu, 5 Nov 2026 09:49:30 +0000
+Subject: [PATCH] Use the ninja on PATH instead of fetching oven-sh/ninja
+
+ensureNinja() downloads the oven-sh/ninja fork from GitHub at configure
+time and runs it in place of conda's ninja-base (osx/win; linux falls back
+when the fetch fails). Always use the PATH ninja: upstream notes a stock
+ninja builds the same graph, only without Rust .rmeta pipelining.
+ninjaIfPresent() is changed too so every step touches the build dir with
+the same ninja.
+---
+ scripts/build/ninja-release.ts | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/scripts/build/ninja-release.ts b/scripts/build/ninja-release.ts
+index f626ceb..b227025 100644
+--- a/scripts/build/ninja-release.ts
++++ b/scripts/build/ninja-release.ts
+@@ -69,6 +69,8 @@ function whyNotRunnable(ninja: string): string | undefined {
+  * that finds a log it considers too old or too new rewrites or deletes it, which makes the next build a full one.
+  */
+ export function ninjaIfPresent(cfg: NinjaConfig): string {
++  // conda: always the ninja on PATH (ninja-base), never the oven-sh/ninja fork.
++  return "ninja";
+   const present = presentNinja(cfg);
+   return present !== undefined && whyNotRunnable(present) === undefined ? present : "ninja";
+ }
+@@ -84,6 +86,10 @@ export function ninjaIfPresent(cfg: NinjaConfig): string {
+  */
+ export async function ensureNinja(cfg: NinjaConfig): Promise<string> {
+   const say = (line: string) => process.stderr.write(`${nameColor("ninja", "[ninja]")} ${line}\n`);
++  // conda: build with the ninja on PATH (ninja-base) instead of downloading the
++  // oven-sh/ninja fork at configure time. Same graph, only without Rust pipelining.
++  say("conda: building with the ninja on PATH");
++  return "ninja";
+   const pinned = presentNinja(cfg) ?? (await fetchNinja(cfg, say));
+   if (pinned === undefined) return "ninja";
+   const why = whyNotRunnable(pinned);
